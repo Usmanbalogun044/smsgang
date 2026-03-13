@@ -3,10 +3,12 @@
 use App\Http\Controllers\Api\ActivationController;
 use App\Http\Controllers\Api\Admin\AdminActivationController;
 use App\Http\Controllers\Api\Admin\AdminCountryController;
+use App\Http\Controllers\Api\Admin\AdminOrderController;
 use App\Http\Controllers\Api\Admin\AdminPricingController;
 use App\Http\Controllers\Api\Admin\AdminServiceController;
 use App\Http\Controllers\Api\Admin\AdminSettingsController;
 use App\Http\Controllers\Api\Admin\AdminUserController;
+use App\Http\Controllers\Api\Admin\WithdrawalController;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\LendoverifyWebhookController;
 use App\Http\Controllers\Api\OrderController;
@@ -35,6 +37,8 @@ Route::post('/webhooks/lendoverify', [LendoverifyWebhookController::class, 'hand
 Route::middleware(['auth:sanctum', 'active', 'throttle:api'])->group(function () {
     Route::post('/logout', [AuthController::class, 'logout']);
     Route::get('/user', [AuthController::class, 'user']);
+    Route::put('/user/profile', [AuthController::class, 'updateProfile']);
+    Route::put('/user/password', [AuthController::class, 'updatePassword']);
 
     // Activations
     Route::post('/activations/buy', [ActivationController::class, 'buy'])
@@ -57,12 +61,10 @@ Route::middleware(['auth:sanctum', 'active', 'admin', 'throttle:api'])
     ->group(function () {
         // Services
         Route::get('/services', [AdminServiceController::class, 'index']);
-        Route::post('/services/sync', [AdminServiceController::class, 'sync']);
         Route::post('/services/{service}/toggle', [AdminServiceController::class, 'toggle']);
 
         // Countries
         Route::get('/countries', [AdminCountryController::class, 'index']);
-        Route::post('/countries/sync', [AdminCountryController::class, 'sync']);
         Route::post('/countries/{country}/toggle', [AdminCountryController::class, 'toggle']);
 
         // Pricing
@@ -75,11 +77,21 @@ Route::middleware(['auth:sanctum', 'active', 'admin', 'throttle:api'])
         Route::post('/activations/{activation}/expire', [AdminActivationController::class, 'expire']);
         Route::get('/stats', [AdminActivationController::class, 'stats']);
 
+        // Orders
+        Route::get('/orders', [AdminOrderController::class, 'index']);
+        Route::get('/orders/{order}', [AdminOrderController::class, 'show']);
+
         // Users
+        Route::get('/users/stats', [AdminUserController::class, 'stats']);
         Route::get('/users', [AdminUserController::class, 'index']);
         Route::put('/users/{user}', [AdminUserController::class, 'update']);
 
         // Settings (global markup + exchange rate)
         Route::get('/settings', [AdminSettingsController::class, 'show']);
         Route::put('/settings', [AdminSettingsController::class, 'update']);
+
+        // Withdrawals
+        Route::get('/withdrawals', [WithdrawalController::class, 'index']);
+        Route::post('/withdrawals', [WithdrawalController::class, 'store']);
+        Route::delete('/withdrawals/{withdrawal}', [WithdrawalController::class, 'destroy']);
     });

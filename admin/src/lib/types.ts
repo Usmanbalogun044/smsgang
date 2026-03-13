@@ -29,7 +29,7 @@ export interface ServicePrice {
   service: Service;
   country: Country;
   provider_price: number;
-  markup_type: 'percentage' | 'fixed';
+  markup_type: 'percent' | 'fixed';
   markup_value: number;
   final_price: number;
   is_active: boolean;
@@ -77,12 +77,25 @@ export interface PaginatedResponse<T> {
 
 export interface AdminStats {
   total_orders: number;
+  completed_sales_count: number;
   total_revenue: number;
+  total_profit: number;
   active_activations: number;
   registered_users: number;
   revenue_today: number;
   revenue_week: number;
   revenue_month: number;
+  profit_today: number;
+  profit_week: number;
+  profit_month: number;
+  total_withdrawals: number;
+}
+
+export interface Withdrawal {
+  id: number;
+  amount: number;
+  note: string | null;
+  created_at: string;
 }
 
 export interface AdminSettings {

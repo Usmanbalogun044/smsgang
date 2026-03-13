@@ -10,26 +10,28 @@ export default function Pagination({ currentPage, lastPage, onPageChange }: Pagi
   if (lastPage <= 1) return null;
 
   return (
-    <div className="flex items-center justify-between mt-5 px-1">
-      <p className="text-xs text-slate-500">Page <span className="text-slate-300 font-medium">{currentPage}</span> of {lastPage}</p>
-      <div className="flex gap-2">
-        <button
-          onClick={() => onPageChange(currentPage - 1)}
-          disabled={currentPage <= 1}
-          className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-300 bg-[#1a1e35] border border-[#252b45] rounded-lg disabled:opacity-30 disabled:cursor-not-allowed hover:bg-[#252b45] hover:border-[#303860] transition-colors"
-        >
-          <svg className="w-3 h-3" fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg>
-          Prev
-        </button>
-        <button
-          onClick={() => onPageChange(currentPage + 1)}
-          disabled={currentPage >= lastPage}
-          className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-300 bg-[#1a1e35] border border-[#252b45] rounded-lg disabled:opacity-30 disabled:cursor-not-allowed hover:bg-[#252b45] hover:border-[#303860] transition-colors"
-        >
-          Next
-          <svg className="w-3 h-3" fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24"><path d="M9 18l6-6-6-6"/></svg>
-        </button>
+    <div className="flex items-center gap-2">
+      <button
+        onClick={() => onPageChange(currentPage - 1)}
+        disabled={currentPage <= 1}
+        className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-600 dark:text-slate-300 bg-white dark:bg-[#1a1e35] border border-slate-200 dark:border-[#252b45] rounded-lg disabled:opacity-50 disabled:cursor-not-allowed hover:bg-slate-50 dark:hover:bg-[#252b45] hover:border-slate-300 dark:hover:border-[#303860] transition-colors"
+      >
+        <span className="material-symbols-outlined text-[16px]">chevron_left</span>
+        Prev
+      </button>
+      
+      <div className="px-3 py-1.5 bg-slate-100 dark:bg-[#1a1e35] rounded-lg text-xs font-medium text-slate-600 dark:text-slate-300 border border-transparent dark:border-[#252b45]">
+         <span className="text-slate-900 dark:text-white font-bold">{currentPage}</span> / {lastPage}
       </div>
+
+      <button
+        onClick={() => onPageChange(currentPage + 1)}
+        disabled={currentPage >= lastPage}
+        className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-600 dark:text-slate-300 bg-white dark:bg-[#1a1e35] border border-slate-200 dark:border-[#252b45] rounded-lg disabled:opacity-50 disabled:cursor-not-allowed hover:bg-slate-50 dark:hover:bg-[#252b45] hover:border-slate-300 dark:hover:border-[#303860] transition-colors"
+      >
+        Next
+        <span className="material-symbols-outlined text-[16px]">chevron_right</span>
+      </button>
     </div>
   );
 }

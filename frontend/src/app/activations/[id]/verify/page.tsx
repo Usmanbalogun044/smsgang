@@ -18,7 +18,7 @@ export default function VerifyPaymentPage() {
       .then(({ data }) => {
         setStatus('success');
         toast.success('Payment verified! Number purchased.');
-        const activation = data.data?.activation;
+        const activation = data.activation ?? data.data?.activation;
         if (activation) {
           setTimeout(() => router.push(`/activations/${activation.id}`), 1500);
         }

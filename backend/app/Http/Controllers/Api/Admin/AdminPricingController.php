@@ -32,6 +32,14 @@ class AdminPricingController extends Controller
             $query->where('country_id', $request->integer('country_id'));
         }
 
+        if ($request->has('search')) {
+            $search = $request->input('search');
+            $query->where(function($q) use ($search) {
+                $q->whereHas('service', fn($qq) => $qq->where('name', 'like', "%{$search}%"))
+                  ->orWhereHas('country', fn($qq) => $qq->where('name', 'like', "%{$search}%"));
+            });
+        }
+
         return ServicePriceResource::collection($query->orderBy('updated_at', 'desc')->paginate(50));
     }
 
@@ -40,6 +48,7 @@ class AdminPricingController extends Controller
         $servicePrice->update([
             'markup_type' => $request->markup_type,
             'markup_value' => $request->markup_value,
+            'is_active' => $request->boolean('is_active', $servicePrice->is_active),
             'final_price' => $this->pricingService->calculateFinalPrice(
                 (float) $servicePrice->provider_price,
                 \App\Enums\MarkupType::from($request->markup_type),

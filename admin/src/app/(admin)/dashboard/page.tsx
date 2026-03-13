@@ -3,200 +3,333 @@
 import { useEffect, useState } from 'react';
 import api from '@/lib/api';
 import toast from 'react-hot-toast';
-import type { AdminStats } from '@/lib/types';
-import { useAuthStore } from '@/store/auth';
+import type { AdminStats, Withdrawal } from '@/lib/types';
 
 export default function DashboardPage() {
     const [stats, setStats] = useState<AdminStats | null>(null);
     const [loading, setLoading] = useState(true);
-    const { user } = useAuthStore();
+    const [withdrawals, setWithdrawals] = useState<Withdrawal[]>([]);
+    const [withdrawalTotal, setWithdrawalTotal] = useState(0);
+    const [withdrawAmount, setWithdrawAmount] = useState('');
+    const [withdrawNote, setWithdrawNote] = useState('');
+    const [withdrawing, setWithdrawing] = useState(false);
 
-    useEffect(() => {
+    const loadStats = () =>
         api.get('/admin/stats')
             .then(({ data }) => setStats(data.data))
-            .catch(() => toast.error('Failed to load stats'))
-            .finally(() => setLoading(false));
-    }, []);
+            .catch(() => toast.error('Failed to load stats'));
+
+    const loadWithdrawals = () =>
+        api.get('/admin/withdrawals')
+            .then(({ data }) => {
+                setWithdrawals(data.data);
+                setWithdrawalTotal(data.total);
+            })
+            .catch(() => toast.error('Failed to load withdrawals'));
+
+    useEffect(() => {
+        Promise.all([loadStats(), loadWithdrawals()]).finally(() => setLoading(false));
+    }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+    const handleWithdraw = async (e: React.FormEvent) => {
+        e.preventDefault();
+        const amt = parseFloat(withdrawAmount);
+        if (!amt || amt <= 0) { toast.error('Enter a valid amount'); return; }
+        setWithdrawing(true);
+        try {
+            await api.post('/admin/withdrawals', { amount: amt, note: withdrawNote || null });
+            toast.success('Withdrawal recorded');
+            setWithdrawAmount('');
+            setWithdrawNote('');
+            await Promise.all([loadStats(), loadWithdrawals()]);
+        } catch {
+            toast.error('Failed to record withdrawal');
+        } finally {
+            setWithdrawing(false);
+        }
+    };
+
+    const handleDeleteWithdrawal = async (id: number) => {
+        if (!confirm('Delete this withdrawal record?')) return;
+        try {
+            await api.delete(`/admin/withdrawals/${id}`);
+            toast.success('Withdrawal deleted');
+            await Promise.all([loadStats(), loadWithdrawals()]);
+        } catch {
+            toast.error('Failed to delete');
+        }
+    };
+
+    const availableBalance = (stats?.total_profit ?? 0) - withdrawalTotal;
+    const fmt = (n: number) => n.toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
     if (loading) {
         return (
             <div className="flex items-center justify-center min-h-[400px]">
-                <div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin"></div>
+                <div className="w-8 h-8 border-4 border-[#0f6df0] border-t-transparent rounded-full animate-spin"></div>
             </div>
         );
     }
 
     return (
         <div className="animate-in fade-in duration-500">
-            {/* Top Bar / Header Component Integration */}
+            {/* Header */}
             <div className="bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 px-8 py-4 flex items-center justify-between sticky top-0 z-30 shadow-sm transition-colors">
                 <div className="flex items-center gap-4">
-                    <div className="w-10 h-10 bg-primary/10 rounded-xl flex items-center justify-center text-primary rotate-3 transition-transform hover:rotate-0">
+                    <div className="w-10 h-10 bg-[#0f6df0]/10 rounded-xl flex items-center justify-center text-[#0f6df0]">
                         <span className="material-symbols-outlined !text-2xl font-bold">dashboard</span>
                     </div>
                     <div>
                         <h1 className="text-xl font-bold text-slate-900 dark:text-white leading-tight">Admin Dashboard</h1>
-                        <p className="text-xs font-semibold text-slate-400 dark:text-slate-500">Platform performance & health</p>
+                        <p className="text-xs font-semibold text-slate-400">Platform performance & health</p>
                     </div>
                 </div>
-
-                <div className="flex items-center gap-6">
-                    <div className="hidden lg:flex relative">
-                        <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 !text-lg">search</span>
-                        <input 
-                            type="text" 
-                            placeholder="Search records..." 
-                            className="bg-slate-100 dark:bg-slate-800 border-none rounded-xl pl-10 pr-4 py-2 text-sm w-64 focus:ring-2 focus:ring-primary/20 text-slate-600 dark:text-slate-300 placeholder:text-slate-400 transition-all font-medium"
-                        />
-                    </div>
+                <div className="flex items-center gap-3">
                     <div className="flex items-center gap-2 px-3 py-1.5 bg-emerald-500/10 rounded-full">
                         <div className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse"></div>
                         <span className="text-[11px] font-bold text-emerald-600 uppercase tracking-wider">System Live</span>
                     </div>
-                    <button className="relative w-10 h-10 flex border border-slate-200 dark:border-slate-800 items-center justify-center rounded-xl bg-white dark:bg-slate-900 text-slate-500 hover:text-primary transition-colors">
-                        <span className="material-symbols-outlined">notifications</span>
-                        <span className="absolute top-2 right-2 w-2 h-2 bg-red-500 border-2 border-white dark:border-slate-900 rounded-full"></span>
-                    </button>
                 </div>
             </div>
 
-            {/* Viewport Content */}
             <div className="p-8 space-y-8">
-                {/* Stats Grid */}
+                {/* Top Stats Grid */}
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-                    <div className="bg-white dark:bg-slate-900 p-6 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm transition-all hover:shadow-md hover:border-primary/20">
+                    <div className="bg-white dark:bg-slate-900 p-6 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm hover:shadow-md hover:border-[#0f6df0]/20 transition-all">
                         <div className="flex justify-between items-start mb-4">
-                            <span className="text-slate-500 dark:text-slate-400 text-sm font-medium">Total Revenue</span>
-                            <span className="text-emerald-500 text-xs font-bold bg-emerald-500/10 px-2 py-1 rounded-lg">+12.5%</span>
+                            <span className="text-slate-500 dark:text-slate-400 text-sm font-medium">Total Sales (NGN)</span>
+                            <span className="text-emerald-500 text-xs font-bold bg-emerald-500/10 px-2 py-1 rounded-lg">{stats?.completed_sales_count?.toLocaleString() ?? '0'} sales</span>
                         </div>
-                        <div className="flex flex-col">
-                            <span className="text-3xl font-bold tracking-tight text-slate-900 dark:text-white">{stats?.total_revenue?.toLocaleString() || '0'}</span>
-                            <span className="text-slate-400 text-[11px] mt-1 font-semibold uppercase tracking-wider">30 days aggregate</span>
-                        </div>
+                        <span className="text-3xl font-bold tracking-tight text-slate-900 dark:text-white">₦{fmt(stats?.total_revenue ?? 0)}</span>
+                        <p className="text-slate-400 text-[11px] mt-1 font-semibold uppercase tracking-wider">completed orders</p>
                     </div>
-                    <div className="bg-white dark:bg-slate-900 p-6 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm transition-all hover:shadow-md hover:border-primary/20">
+                    <div className="bg-white dark:bg-slate-900 p-6 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm hover:shadow-md hover:border-[#0f6df0]/20 transition-all">
                         <div className="flex justify-between items-start mb-4">
-                            <span className="text-slate-500 dark:text-slate-400 text-sm font-medium">Active Activations</span>
-                            <span className="text-emerald-500 text-xs font-bold bg-emerald-500/10 px-2 py-1 rounded-lg">+5.2%</span>
+                            <span className="text-slate-500 dark:text-slate-400 text-sm font-medium">Total Profit (NGN)</span>
+                            <span className="text-emerald-500 text-xs font-bold bg-emerald-500/10 px-2 py-1 rounded-lg">all-time</span>
                         </div>
-                        <div className="flex flex-col">
-                            <span className="text-3xl font-bold tracking-tight text-slate-900 dark:text-white">{stats?.active_activations?.toLocaleString() || '0'}</span>
-                            <span className="text-slate-400 text-[11px] mt-1 font-semibold uppercase tracking-wider">currently active</span>
-                        </div>
+                        <span className="text-3xl font-bold tracking-tight text-slate-900 dark:text-white">₦{fmt(stats?.total_profit ?? 0)}</span>
+                        <p className="text-slate-400 text-[11px] mt-1 font-semibold uppercase tracking-wider">gross profit earned</p>
                     </div>
-                    <div className="bg-white dark:bg-slate-900 p-6 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm transition-all hover:shadow-md hover:border-primary/20">
+                    <div className="bg-white dark:bg-slate-900 p-6 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm hover:shadow-md hover:border-[#0f6df0]/20 transition-all">
                         <div className="flex justify-between items-start mb-4">
                             <span className="text-slate-500 dark:text-slate-400 text-sm font-medium">Total Users</span>
-                            <span className="text-blue-500 text-xs font-bold bg-blue-500/10 px-2 py-1 rounded-lg">+3.1%</span>
+                            <span className="text-[#0f6df0] text-xs font-bold bg-[#0f6df0]/10 px-2 py-1 rounded-lg">registered</span>
                         </div>
-                        <div className="flex flex-col">
-                            <span className="text-3xl font-bold tracking-tight text-slate-900 dark:text-white">{stats?.registered_users?.toLocaleString() || '0'}</span>
-                            <span className="text-slate-400 text-[11px] mt-1 font-semibold uppercase tracking-wider">registered users</span>
-                        </div>
+                        <span className="text-3xl font-bold tracking-tight text-slate-900 dark:text-white">{stats?.registered_users?.toLocaleString() ?? '0'}</span>
+                        <p className="text-slate-400 text-[11px] mt-1 font-semibold uppercase tracking-wider">total accounts</p>
                     </div>
-                    <div className="bg-white dark:bg-slate-900 p-6 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm transition-all hover:shadow-md hover:border-primary/20">
+                    <div className="bg-white dark:bg-slate-900 p-6 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm hover:shadow-md hover:border-[#0f6df0]/20 transition-all">
                         <div className="flex justify-between items-start mb-4">
-                            <span className="text-slate-500 dark:text-slate-400 text-sm font-medium">Today's Sales</span>
-                            <span className="text-emerald-500 text-xs font-bold bg-emerald-500/10 px-2 py-1 rounded-lg">+8.4%</span>
+                            <span className="text-slate-500 dark:text-slate-400 text-sm font-medium">Active Now</span>
+                            <span className="text-amber-500 text-xs font-bold bg-amber-500/10 px-2 py-1 rounded-lg">live</span>
                         </div>
-                        <div className="flex flex-col">
-                            <span className="text-3xl font-bold tracking-tight text-slate-900 dark:text-white">{stats?.revenue_today?.toLocaleString() || '0'}</span>
-                            <span className="text-slate-400 text-[11px] mt-1 font-semibold uppercase tracking-wider">since midnight</span>
+                        <span className="text-3xl font-bold tracking-tight text-slate-900 dark:text-white">{stats?.active_activations?.toLocaleString() ?? '0'}</span>
+                        <p className="text-slate-400 text-[11px] mt-1 font-semibold uppercase tracking-wider">active activations</p>
+                    </div>
+                </div>
+
+                {/* Profit Breakdown */}
+                <div>
+                    <h2 className="text-base font-bold text-slate-700 dark:text-slate-300 mb-4 uppercase tracking-widest text-xs">Profit Breakdown</h2>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                        {/* Today */}
+                        <div className="bg-white dark:bg-slate-900 p-6 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm">
+                            <div className="flex items-center justify-between mb-3">
+                                <span className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Today</span>
+                                <div className="w-8 h-8 bg-[#0f6df0]/10 rounded-lg flex items-center justify-center">
+                                    <span className="material-symbols-outlined !text-base text-[#0f6df0]">today</span>
+                                </div>
+                            </div>
+                            <div className="space-y-2">
+                                <div className="flex justify-between items-center">
+                                    <span className="text-xs text-slate-500">Revenue</span>
+                                    <span className="text-sm font-bold text-slate-800 dark:text-slate-200">₦{fmt(stats?.revenue_today ?? 0)}</span>
+                                </div>
+                                <div className="flex justify-between items-center">
+                                    <span className="text-xs text-slate-500">Profit</span>
+                                    <span className="text-sm font-bold text-emerald-600">₦{fmt(stats?.profit_today ?? 0)}</span>
+                                </div>
+                            </div>
+                        </div>
+                        {/* This Week */}
+                        <div className="bg-white dark:bg-slate-900 p-6 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm">
+                            <div className="flex items-center justify-between mb-3">
+                                <span className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">This Week</span>
+                                <div className="w-8 h-8 bg-amber-500/10 rounded-lg flex items-center justify-center">
+                                    <span className="material-symbols-outlined !text-base text-amber-600">date_range</span>
+                                </div>
+                            </div>
+                            <div className="space-y-2">
+                                <div className="flex justify-between items-center">
+                                    <span className="text-xs text-slate-500">Revenue</span>
+                                    <span className="text-sm font-bold text-slate-800 dark:text-slate-200">₦{fmt(stats?.revenue_week ?? 0)}</span>
+                                </div>
+                                <div className="flex justify-between items-center">
+                                    <span className="text-xs text-slate-500">Profit</span>
+                                    <span className="text-sm font-bold text-emerald-600">₦{fmt(stats?.profit_week ?? 0)}</span>
+                                </div>
+                            </div>
+                        </div>
+                        {/* This Month */}
+                        <div className="bg-white dark:bg-slate-900 p-6 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm">
+                            <div className="flex items-center justify-between mb-3">
+                                <span className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">This Month</span>
+                                <div className="w-8 h-8 bg-purple-500/10 rounded-lg flex items-center justify-center">
+                                    <span className="material-symbols-outlined !text-base text-purple-600">calendar_month</span>
+                                </div>
+                            </div>
+                            <div className="space-y-2">
+                                <div className="flex justify-between items-center">
+                                    <span className="text-xs text-slate-500">Revenue</span>
+                                    <span className="text-sm font-bold text-slate-800 dark:text-slate-200">₦{fmt(stats?.revenue_month ?? 0)}</span>
+                                </div>
+                                <div className="flex justify-between items-center">
+                                    <span className="text-xs text-slate-500">Profit</span>
+                                    <span className="text-sm font-bold text-emerald-600">₦{fmt(stats?.profit_month ?? 0)}</span>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>
 
-                {/* Main Layout Grid */}
+                {/* Wallet Balance & Withdrawals */}
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-                    {/* Revenue Chart Area */}
+                    {/* Balance Card */}
+                    <div className="bg-gradient-to-br from-[#0f6df0] to-[#0a4fad] p-6 rounded-xl shadow-lg text-white flex flex-col gap-4">
+                        <div className="flex items-center gap-2 opacity-80">
+                            <span className="material-symbols-outlined !text-lg">account_balance_wallet</span>
+                            <span className="text-xs font-bold uppercase tracking-widest">Available Balance</span>
+                        </div>
+                        <div>
+                            <span className="text-4xl font-black tracking-tight">₦{fmt(availableBalance)}</span>
+                            <p className="text-xs mt-1 opacity-70">Profit minus recorded withdrawals</p>
+                        </div>
+                        <div className="border-t border-white/20 pt-4 grid grid-cols-2 gap-4 text-xs">
+                            <div>
+                                <p className="opacity-60 uppercase tracking-wider">Total Profit</p>
+                                <p className="font-bold text-sm mt-0.5">₦{fmt(stats?.total_profit ?? 0)}</p>
+                            </div>
+                            <div>
+                                <p className="opacity-60 uppercase tracking-wider">Total Withdrawn</p>
+                                <p className="font-bold text-sm mt-0.5">₦{fmt(withdrawalTotal)}</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Record Withdrawal Form */}
+                    <div className="bg-white dark:bg-slate-900 p-6 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm">
+                        <h3 className="text-sm font-bold text-slate-900 dark:text-white mb-4">Record Withdrawal</h3>
+                        <p className="text-xs text-slate-500 mb-5">Log money taken out of the payment gateway. Balance is updated instantly — profit calculation continues unaffected.</p>
+                        <form onSubmit={handleWithdraw} className="space-y-4">
+                            <div>
+                                <label className="text-xs font-bold text-slate-600 dark:text-slate-400 uppercase tracking-wider block mb-1.5">Amount (NGN)</label>
+                                <input
+                                    type="number"
+                                    min="0.01"
+                                    step="0.01"
+                                    value={withdrawAmount}
+                                    onChange={(e) => setWithdrawAmount(e.target.value)}
+                                    placeholder="e.g. 50000"
+                                    className="w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-4 py-2.5 text-sm outline-none focus:border-[#0f6df0] focus:ring-2 focus:ring-[#0f6df0]/20 transition text-slate-800 dark:text-slate-200"
+                                />
+                            </div>
+                            <div>
+                                <label className="text-xs font-bold text-slate-600 dark:text-slate-400 uppercase tracking-wider block mb-1.5">Note (optional)</label>
+                                <input
+                                    type="text"
+                                    value={withdrawNote}
+                                    onChange={(e) => setWithdrawNote(e.target.value)}
+                                    placeholder="e.g. Bank transfer Mar 13"
+                                    className="w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-4 py-2.5 text-sm outline-none focus:border-[#0f6df0] focus:ring-2 focus:ring-[#0f6df0]/20 transition text-slate-800 dark:text-slate-200"
+                                />
+                            </div>
+                            <button
+                                type="submit"
+                                disabled={withdrawing}
+                                className="w-full py-2.5 bg-[#0f6df0] text-white rounded-lg text-sm font-bold hover:bg-[#0d5ed9] transition disabled:opacity-60"
+                            >
+                                {withdrawing ? 'Saving…' : 'Record Withdrawal'}
+                            </button>
+                        </form>
+                    </div>
+
+                    {/* Withdrawal History */}
+                    <div className="bg-white dark:bg-slate-900 p-6 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col">
+                        <h3 className="text-sm font-bold text-slate-900 dark:text-white mb-4">Withdrawal History</h3>
+                        {withdrawals.length === 0 ? (
+                            <div className="flex-1 flex flex-col items-center justify-center text-center py-8">
+                                <span className="material-symbols-outlined text-3xl text-slate-300 dark:text-slate-700 mb-2">receipt_long</span>
+                                <p className="text-xs text-slate-400">No withdrawals recorded yet</p>
+                            </div>
+                        ) : (
+                            <div className="space-y-2 overflow-y-auto max-h-64">
+                                {withdrawals.map((w) => (
+                                    <div key={w.id} className="flex items-center justify-between p-3 bg-slate-50 dark:bg-slate-800/50 rounded-lg group">
+                                        <div className="min-w-0">
+                                            <p className="text-sm font-bold text-slate-800 dark:text-slate-200">₦{fmt(w.amount)}</p>
+                                            <p className="text-[11px] text-slate-400 truncate">{w.note || new Date(w.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}</p>
+                                        </div>
+                                        <button
+                                            onClick={() => handleDeleteWithdrawal(w.id)}
+                                            className="p-1.5 text-slate-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all"
+                                            title="Delete withdrawal"
+                                        >
+                                            <span className="material-symbols-outlined !text-base">delete</span>
+                                        </button>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                    </div>
+                </div>
+
+                {/* Chart Area */}
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
                     <div className="lg:col-span-2 bg-white dark:bg-slate-900 p-6 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col">
                         <div className="flex items-center justify-between mb-8">
                             <div>
                                 <h3 className="text-lg font-bold text-slate-900 dark:text-white">Revenue Performance</h3>
                                 <p className="text-sm text-slate-500 dark:text-slate-400">Monthly revenue trend analysis</p>
                             </div>
-                            <select className="bg-slate-100 dark:bg-slate-800 border-none rounded-lg text-xs font-bold px-3 py-2 focus:ring-primary text-slate-600 dark:text-slate-300">
-                                <option>Last 30 Days</option>
-                                <option>Last 7 Days</option>
-                                <option>Last Year</option>
-                            </select>
                         </div>
-                        <div className="h-[300px] w-full relative group">
+                        <div className="h-[240px] w-full relative">
                             <svg className="w-full h-full" preserveAspectRatio="none" viewBox="0 0 800 300">
                                 <defs>
                                     <linearGradient id="chartGradient" x1="0" x2="0" y1="0" y2="1">
-                                        <stop offset="0%" stopColor="#0f6df0" stopOpacity="0.2"></stop>
-                                        <stop offset="100%" stopColor="#0f6df0" stopOpacity="0"></stop>
+                                        <stop offset="0%" stopColor="#0f6df0" stopOpacity="0.2" />
+                                        <stop offset="100%" stopColor="#0f6df0" stopOpacity="0" />
                                     </linearGradient>
                                 </defs>
-                                <path d="M0,250 C100,240 150,220 200,180 C250,140 300,120 400,150 C500,180 600,80 700,50 L800,20 L800,300 L0,300 Z" fill="url(#chartGradient)"></path>
-                                <path d="M0,250 C100,240 150,220 200,180 C250,140 300,120 400,150 C500,180 600,80 700,50 L800,20" fill="none" stroke="#0f6df0" strokeLinecap="round" strokeWidth="4"></path>
-                                <line className="text-slate-100 dark:text-slate-800" stroke="currentColor" strokeDasharray="4" x1="0" x2="800" y1="50" y2="50"></line>
-                                <line className="text-slate-100 dark:text-slate-800" stroke="currentColor" strokeDasharray="4" x1="0" x2="800" y1="150" y2="150"></line>
-                                <line className="text-slate-100 dark:text-slate-800" stroke="currentColor" strokeDasharray="4" x1="0" x2="800" y1="250" y2="250"></line>
+                                <path d="M0,250 C100,240 150,220 200,180 C250,140 300,120 400,150 C500,180 600,80 700,50 L800,20 L800,300 L0,300 Z" fill="url(#chartGradient)" />
+                                <path d="M0,250 C100,240 150,220 200,180 C250,140 300,120 400,150 C500,180 600,80 700,50 L800,20" fill="none" stroke="#0f6df0" strokeWidth="4" strokeLinecap="round" />
                             </svg>
-                            <div className="flex justify-between mt-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">
-                                <span>May 01</span>
-                                <span>May 10</span>
-                                <span>May 20</span>
-                                <span>Jun 01</span>
-                            </div>
                         </div>
                     </div>
-
-                    {/* Market Distribution */}
                     <div className="bg-white dark:bg-slate-900 p-6 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col">
-                        <div className="flex items-center justify-between mb-8">
-                            <div>
-                                <h3 className="text-lg font-bold text-slate-900 dark:text-white">Active Markets</h3>
-                                <p className="text-sm text-slate-500 dark:text-slate-400">Distribution by volume</p>
-                            </div>
-                            <span className="material-symbols-outlined text-slate-300">public</span>
-                        </div>
-                        <div className="flex-1 space-y-6">
+                        <h3 className="text-lg font-bold text-slate-900 dark:text-white mb-6">Quick Summary</h3>
+                        <div className="flex-1 space-y-4">
                             {[
-                                { name: 'Nigeria', val: 64, color: 'bg-primary' },
-                                { name: 'Ghana', val: 18, color: 'bg-primary/80' },
-                                { name: 'Kenya', val: 12, color: 'bg-primary/50' },
-                                { name: 'Others', val: 6, color: 'bg-primary/20' }
-                            ].map((market) => (
-                                <div key={market.name} className="space-y-2">
-                                    <div className="flex justify-between text-xs font-bold uppercase tracking-tight">
-                                        <span className="text-slate-500 dark:text-slate-400">{market.name}</span>
-                                        <span className="text-slate-900 dark:text-white">{market.val}%</span>
+                                { label: 'Today\'s Revenue', value: `₦${fmt(stats?.revenue_today ?? 0)}`, icon: 'today', color: 'text-[#0f6df0] bg-[#0f6df0]/10' },
+                                { label: 'Today\'s Profit', value: `₦${fmt(stats?.profit_today ?? 0)}`, icon: 'trending_up', color: 'text-emerald-600 bg-emerald-100 dark:bg-emerald-900/30' },
+                                { label: 'Monthly Profit', value: `₦${fmt(stats?.profit_month ?? 0)}`, icon: 'calendar_month', color: 'text-purple-600 bg-purple-100 dark:bg-purple-900/30' },
+                                { label: 'Available Balance', value: `₦${fmt(availableBalance)}`, icon: 'account_balance_wallet', color: 'text-amber-600 bg-amber-100 dark:bg-amber-900/30' },
+                            ].map((item) => (
+                                <div key={item.label} className="flex items-center justify-between p-3 rounded-lg bg-slate-50 dark:bg-slate-800/50">
+                                    <div className="flex items-center gap-3">
+                                        <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${item.color}`}>
+                                            <span className="material-symbols-outlined !text-base">{item.icon}</span>
+                                        </div>
+                                        <span className="text-xs font-semibold text-slate-600 dark:text-slate-400">{item.label}</span>
                                     </div>
-                                    <div className="w-full bg-slate-100 dark:bg-slate-800 h-2.5 rounded-full overflow-hidden">
-                                        <div className={`${market.color} h-full transition-all duration-1000`} style={{ width: `${market.val}%` }}></div>
-                                    </div>
+                                    <span className="text-sm font-bold text-slate-800 dark:text-slate-200">{item.value}</span>
                                 </div>
                             ))}
                         </div>
-                        <button className="mt-8 w-full py-3.5 border-2 border-slate-100 dark:border-slate-800 rounded-xl text-sm font-bold text-primary hover:bg-primary hover:text-white hover:border-primary transition-all duration-300">
-                            Download Analytics
-                        </button>
-                    </div>
-                </div>
-
-                {/* System Activity Table */}
-                <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 overflow-hidden shadow-sm">
-                    <div className="px-6 py-5 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between bg-slate-50/50 dark:bg-slate-800/20">
-                        <div>
-                            <h3 className="text-lg font-bold text-slate-900 dark:text-white">Real-Time Logs</h3>
-                            <p className="text-xs text-slate-500 font-medium mt-0.5">Automated monitoring system updates</p>
-                        </div>
-                        <button className="px-4 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg text-xs font-bold text-slate-600 dark:text-slate-300 hover:border-primary hover:text-primary transition-all shadow-sm">
-                            Clear Logs
-                        </button>
-                    </div>
-                    <div className="p-12 text-center">
-                        <div className="w-16 h-16 bg-slate-50 dark:bg-slate-800/50 rounded-2xl flex items-center justify-center mx-auto mb-4 border border-slate-100 dark:border-slate-800">
-                            <span className="material-symbols-outlined text-3xl opacity-20 text-slate-900 dark:text-white">list_alt</span>
-                        </div>
-                        <h4 className="text-slate-900 dark:text-white font-bold mb-1">Waiting for data...</h4>
-                        <p className="text-slate-500 text-sm max-w-xs mx-auto">System events and user activity logs will sync automatically when active.</p>
                     </div>
                 </div>
             </div>
         </div>
     );
 }
+

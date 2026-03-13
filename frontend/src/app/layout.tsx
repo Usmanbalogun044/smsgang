@@ -2,8 +2,7 @@ import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import "./globals.css";
 import AuthProvider from "@/components/AuthProvider";
-import Navbar from "@/components/Navbar";
-import Footer from "@/components/Footer";
+import AppLayout from "@/components/AppLayout";
 import { Toaster } from "react-hot-toast";
 
 const inter = Inter({
@@ -36,9 +35,7 @@ export default function RootLayout({
       </head>
       <body className={`${inter.variable} antialiased min-h-screen flex flex-col`}>
         <AuthProvider>
-          <Navbar />
-          <main className="flex-1">{children}</main>
-          <Footer />
+          <AppLayout>{children}</AppLayout>
           <Toaster position="top-right" />
         </AuthProvider>
       </body>

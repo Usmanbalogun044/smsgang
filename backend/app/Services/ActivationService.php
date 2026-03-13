@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Enums\ActivationStatus;
+use App\Enums\MarkupType;
 use App\Enums\OrderStatus;
 use App\Jobs\CheckSmsJob;
 use App\Models\Activation;
@@ -10,42 +11,55 @@ use App\Models\Country;
 use App\Models\Order;
 use App\Models\Service;
 use App\Models\Setting;
+use App\Models\ServicePrice;
 use App\Models\User;
 use App\Services\SmsProviders\ProviderInterface;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use Throwable;
 
 class ActivationService
 {
     public function __construct(
         private ProviderInterface $provider,
         private LendoverifyService $lendoverify,
+        private PricingService $pricingService,
     ) {}
 
     public function initiatePurchase(User $user, Service $service, Country $country): Order
     {
-        $globalMarkup = (float) Setting::get('global_markup', 100);
-        $exchangeRate = (float) Setting::get('exchange_rate', 18);
-
-        // Fetch live price from 5SIM for this country+service
+        // Settings are handled inside PricingService.
         $providerPrice = 0.0;
+        $providerCode = strtolower($country->provider_code ?? $country->name);
+        $serviceCode = strtolower($service->provider_service_code);
+
         try {
             $baseUrl = rtrim(config('services.fivesim.base_url'), '/');
-            $providerCode = $country->provider_code ?? strtolower($country->name);
-            $response = Http::timeout(10)
+            $response = Http::connectTimeout(10)
+                ->timeout(30)
+                ->retry(1, 300)
                 ->get("{$baseUrl}/guest/prices", [
                     'product' => $service->provider_service_code,
-                    'country' => $providerCode,
                 ]);
+
+            if (! $response->successful()) {
+                throw new \RuntimeException('5SIM request failed with status ' . $response->status());
+            }
+
             $priceData = $response->json() ?? [];
-            $operators = $priceData[$providerCode][$service->provider_service_code] ?? [];
+            $priceDataLower = array_change_key_case($priceData, CASE_LOWER);
+            $countriesData = $priceDataLower[$serviceCode] ?? [];
+            $operators = $countriesData[$providerCode] ?? [];
+
             foreach ($operators as $info) {
-                if (isset($info['cost'])) {
-                    $providerPrice = (float) $info['cost'];
-                    break;
+                $cost = (float) ($info['cost'] ?? 0);
+                $count = (int) ($info['count'] ?? 0);
+
+                if ($count > 0 && $cost > 0 && ($providerPrice <= 0 || $cost < $providerPrice)) {
+                    $providerPrice = $cost;
                 }
             }
-        } catch (\Exception $e) {
+        } catch (Throwable $e) {
             Log::warning('Could not fetch live price from 5SIM', [
                 'service' => $service->provider_service_code,
                 'country' => $country->name,
@@ -53,7 +67,41 @@ class ActivationService
             ]);
         }
 
-        $finalPrice = round(($providerPrice * $exchangeRate) + $globalMarkup, 2);
+        if ($providerPrice <= 0) {
+            $savedPrice = ServicePrice::query()
+                ->where('service_id', $service->id)
+                ->where('country_id', $country->id)
+                ->where('is_active', true)
+                ->first();
+
+            if ($savedPrice) {
+                $providerPrice = (float) $savedPrice->provider_price;
+            }
+        }
+
+        if ($providerPrice <= 0) {
+            throw new \RuntimeException('No active price found for the selected service and country.');
+        }
+
+        $exchangeRate = (float) Setting::get('exchange_rate_usd_ngn', 1600.0);
+        $globalMarkupType = (string) Setting::get('global_markup_type', 'fixed');
+        $globalMarkupValue = (float) Setting::get('global_markup_fixed', 150);
+
+        // Keep the same safety factor as PricingService so reported profit aligns with selling price.
+        $effectiveExchangeRate = $exchangeRate * 1.05;
+        $estimatedCostNgn = round($providerPrice * $effectiveExchangeRate, 2);
+
+        $markupAmount = $globalMarkupType === 'percentage'
+            ? round(($estimatedCostNgn * $globalMarkupValue) / 100, 2)
+            : round($globalMarkupValue, 2);
+
+        $finalPrice = $this->pricingService->calculateFinalPrice($providerPrice, MarkupType::Fixed, 0);
+        $profitAmount = round($finalPrice - $estimatedCostNgn, 2);
+
+        if ($profitAmount < 0) {
+            $profitAmount = 0.0;
+        }
+
         $paymentReference = 'SMS_' . uniqid();
 
         $order = Order::create([
@@ -61,6 +109,13 @@ class ActivationService
             'service_id'        => $service->id,
             'country_id'        => $country->id,
             'price'             => $finalPrice,
+            'provider_price_usd' => $providerPrice,
+            'exchange_rate_used' => $exchangeRate,
+            'effective_exchange_rate' => $effectiveExchangeRate,
+            'global_markup_type_used' => $globalMarkupType,
+            'global_markup_value_used' => $globalMarkupValue,
+            'estimated_cost_ngn' => $estimatedCostNgn,
+            'profit_amount' => $profitAmount,
             'payment_reference' => $paymentReference,
             'status'            => OrderStatus::Pending,
         ]);

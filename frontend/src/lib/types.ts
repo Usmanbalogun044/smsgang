@@ -2,6 +2,7 @@ export interface User {
   id: number;
   name: string;
   email: string;
+  avatar?: string | null;
   role: 'user' | 'admin';
   status: 'active' | 'suspended';
   balance?: number;
@@ -28,6 +29,7 @@ export interface ServicePrice {
   service: Service;
   country: Country;
   final_price: number;
+  available_count?: number;
   is_active: boolean;
 }
 

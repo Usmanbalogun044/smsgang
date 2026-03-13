@@ -38,7 +38,26 @@ class LendoverifyService
             ]);
 
             if ($response->successful()) {
-                return $response->json();
+                $payload = $response->json() ?? [];
+                $normalized = $payload['data'] ?? $payload;
+
+                $checkoutUrl = $normalized['checkout_url']
+                    ?? $normalized['checkoutUrl']
+                    ?? $normalized['authorization_url']
+                    ?? $normalized['authorizationUrl']
+                    ?? $normalized['payment_url']
+                    ?? $normalized['paymentUrl']
+                    ?? $normalized['link']
+                    ?? null;
+
+                if ($checkoutUrl) {
+                    $normalized['checkout_url'] = $checkoutUrl;
+                }
+
+                return [
+                    'data' => $normalized,
+                    'raw' => $payload,
+                ];
             }
 
             Log::error('Lendoverify Transaction Initialization Failed', [

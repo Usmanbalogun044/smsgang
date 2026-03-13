@@ -17,6 +17,13 @@ class Order extends Model
         'service_id',
         'country_id',
         'price',
+        'provider_price_usd',
+        'exchange_rate_used',
+        'effective_exchange_rate',
+        'global_markup_type_used',
+        'global_markup_value_used',
+        'estimated_cost_ngn',
+        'profit_amount',
         'payment_reference',
         'lendoverify_checkout_url',
         'status',
@@ -26,6 +33,12 @@ class Order extends Model
     {
         return [
             'price' => 'decimal:2',
+            'provider_price_usd' => 'decimal:4',
+            'exchange_rate_used' => 'decimal:4',
+            'effective_exchange_rate' => 'decimal:4',
+            'global_markup_value_used' => 'decimal:4',
+            'estimated_cost_ngn' => 'decimal:2',
+            'profit_amount' => 'decimal:2',
             'status' => OrderStatus::class,
         ];
     }

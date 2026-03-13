@@ -7,8 +7,6 @@ import { useAuthStore } from '@/store/auth';
 const navItems = [
   { href: '/dashboard', label: 'Dashboard', icon: 'dashboard' },
   { href: '/services', label: 'Services', icon: 'inventory_2' },
-  { href: '/countries', label: 'Countries', icon: 'public' },
-  { href: '/pricing', label: 'Pricing', icon: 'sell' },
   { href: '/activations', label: 'Activations', icon: 'bolt' },
   { href: '/orders', label: 'Orders', icon: 'history' },
   { href: '/users', label: 'Users', icon: 'group' },
@@ -27,7 +25,7 @@ export default function Sidebar() {
   const initials = user ? user.name.split(' ').map((n) => n[0]).join('').toUpperCase().slice(0, 2) : 'AD';
 
   return (
-    <aside className="w-64 bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800 flex flex-col shrink-0 min-h-screen transition-colors">
+    <aside className="w-64 h-screen sticky top-0 bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800 flex flex-col shrink-0 overflow-hidden transition-colors">
       <div className="p-6 flex items-center gap-3">
         <div className="w-10 h-10 bg-[#0f6df0] rounded-lg flex items-center justify-center text-white shadow-lg shadow-[#0f6df0]/20 flex-shrink-0 transition-transform hover:scale-105">
           <span className="material-symbols-outlined !text-2xl">dataset</span>
@@ -38,7 +36,7 @@ export default function Sidebar() {
         </div>
       </div>
 
-      <nav className="flex-1 px-4 py-4 space-y-1 overflow-y-auto custom-scrollbar">
+      <nav className="flex-1 px-4 py-4 space-y-1">
         {navItems.map(({ href, label, icon }) => {
           const isActive = pathname === href || pathname.startsWith(href + '/');
           return (

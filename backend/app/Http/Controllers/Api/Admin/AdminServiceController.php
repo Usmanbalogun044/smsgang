@@ -44,30 +44,4 @@ class AdminServiceController extends Controller
 
         return new ServiceResource($service);
     }
-
-    public function sync(): JsonResponse
-    {
-        $baseUrl = rtrim(config('services.fivesim.base_url'), '/');
-
-        $response = Http::withToken(config('services.fivesim.api_key'))
-            ->timeout(30)
-            ->get("{$baseUrl}/guest/products/any/any");
-
-        $response->throw();
-
-        $products = $response->json();
-        $synced = 0;
-
-        foreach ($products as $productCode => $info) {
-            Service::updateOrCreate(
-                ['provider_service_code' => $productCode],
-                ['name' => ucwords(str_replace(['_', '-'], ' ', $productCode))]
-            );
-            $synced++;
-        }
-
-        return response()->json([
-            'message' => "Synced {$synced} services from 5SIM.",
-        ]);
-    }
 }

@@ -13,7 +13,31 @@ class AdminUserController extends Controller
 {
     public function index(): AnonymousResourceCollection
     {
-        return UserResource::collection(User::latest()->paginate(50));
+        $query = User::query();
+
+        if (request()->has('search')) {
+            $search = request('search');
+            $query->where(function ($q) use ($search) {
+                $q->where('name', 'like', "%{$search}%")
+                  ->orWhere('email', 'like', "%{$search}%");
+            });
+        }
+
+        if (request()->has('role')) {
+            $query->where('role', request('role'));
+        }
+
+        return UserResource::collection($query->latest()->paginate(50));
+    }
+
+    public function stats()
+    {
+        return response()->json([
+            'total_users' => User::count(),
+            'new_this_month' => User::where('created_at', '>=', now()->startOfMonth())->count(),
+            'admins' => User::where('role', 'admin')->count(),
+            'suspended' => User::where('status', 'suspended')->count(),
+        ]);
     }
 
     public function update(UpdateUserRequest $request, User $user): UserResource

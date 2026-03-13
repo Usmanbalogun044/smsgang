@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Enums\MarkupType;
 use App\Http\Controllers\Controller;
 use App\Http\Resources\CountryResource;
 use App\Http\Resources\ServiceResource;
@@ -13,6 +14,7 @@ use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use Throwable;
 
 class ServiceController extends Controller
 {
@@ -33,50 +35,75 @@ class ServiceController extends Controller
     /**
      * Return countries available for a service, with live prices from 5SIM
      * plus the admin's global markup applied.
-     * Price formula: (5SIM_cost_in_rubles × exchange_rate) + global_markup
+     * Price formula: (5SIM_cost_in_usd × exchange_rate) + global_markup
      */
-    public function countriesForService(Service $service): JsonResponse
+    public function countriesForService(Service $service, \App\Services\PricingService $pricingService): JsonResponse
     {
         $baseUrl = rtrim(config('services.fivesim.base_url'), '/');
         $cacheKey = "live_countries_{$service->id}";
 
-        $priceData = Cache::remember($cacheKey, 300, function () use ($baseUrl, $service) {
+        $priceData = Cache::get($cacheKey);
+
+        if (! is_array($priceData)) {
             try {
-                $response = Http::timeout(15)
+                $response = Http::connectTimeout(10)
+                    ->timeout(30)
+                    ->retry(1, 300)
                     ->get("{$baseUrl}/guest/prices", [
                         'product' => $service->provider_service_code,
                     ]);
 
                 if (! $response->successful()) {
-                    return [];
+                    Log::error('5SIM API Error', [
+                        'service' => $service->provider_service_code,
+                        'status' => $response->status(),
+                        'body' => $response->body(),
+                    ]);
+
+                    return response()->json([
+                        'service' => $service->provider_service_code,
+                        'error' => '5SIM request failed with status ' . $response->status(),
+                    ], 502);
                 }
 
-                return $response->json() ?? [];
-            } catch (\Exception $e) {
+                $priceData = $response->json() ?? [];
+                Cache::put($cacheKey, $priceData, 30);
+            } catch (Throwable $e) {
                 Log::warning('5SIM prices fetch failed', [
                     'service' => $service->provider_service_code,
                     'error' => $e->getMessage(),
                 ]);
 
-                return [];
+                return response()->json([
+                    'service' => $service->provider_service_code,
+                    'error' => $e->getMessage(),
+                ], 504);
             }
-        });
-
-        $globalMarkup = (float) Setting::get('global_markup', 100);
-        $exchangeRate = (float) Setting::get('exchange_rate', 18);
+        }
 
         $results = [];
+        // API returns {"service_name": {"country_name": {"provider": {cost, count}}}}
+        // e.g. {"whatsapp": {"usa": {"virtual1": {cost: 1.0, count: 100}}}}
+        
+        $targetServiceCode = strtolower($service->provider_service_code);
+        $priceDataLower = array_change_key_case($priceData, CASE_LOWER);
+        
+        // Get the countries object for this service
+        $countriesData = $priceDataLower[$targetServiceCode] ?? [];
 
-        foreach ($priceData as $providerCode => $services) {
-            $serviceData = $services[$service->provider_service_code] ?? null;
-            if (! $serviceData) {
+        foreach ($countriesData as $countryName => $providers) {
+            // $countryName is the country identifier from 5sim (e.g. 'afghanistan', 'usa')
+            // $providers has operator info
+            
+            if (empty($providers) || !is_array($providers)) {
                 continue;
             }
 
             // Pick cheapest operator with stock
             $bestCost = null;
             $availableCount = 0;
-            foreach ($serviceData as $info) {
+            
+            foreach ($providers as $operatorCode => $info) {
                 $count = (int) ($info['count'] ?? 0);
                 if ($count > 0) {
                     $cost = (float) ($info['cost'] ?? 0);
@@ -91,17 +118,20 @@ class ServiceController extends Controller
                 continue;
             }
 
-            // Upsert country so buy endpoint can find it by ID
+            // Upsert country so buy endpoint can find it by ID if needed locally
+            // Using countryName as provider_code
             $country = Country::updateOrCreate(
-                ['provider_code' => $providerCode],
+                ['provider_code' => $countryName],
                 [
-                    'name'      => ucwords(str_replace(['_', '-'], ' ', $providerCode)),
-                    'code'      => strtoupper(substr($providerCode, 0, 2)),
+                    'name'      => ucwords(str_replace(['_', '-'], ' ', $countryName)),
+                    // Avoid unique constraint violation by using longer code derived from unique provider_code
+                    'code'      => strtoupper(substr($countryName, 0, 10)),
                     'is_active' => true,
                 ]
             );
 
-            $finalPrice = round(($bestCost * $exchangeRate) + $globalMarkup, 2);
+            // Using PricingService to calculate final price (Exchange Rate + Global Markup + 0 specific markup)
+            $finalPrice = $pricingService->calculateFinalPrice($bestCost, MarkupType::Fixed, 0);
 
             $results[] = [
                 'id'              => $country->id,

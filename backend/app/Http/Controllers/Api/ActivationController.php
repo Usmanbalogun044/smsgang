@@ -16,6 +16,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 use Illuminate\Support\Facades\Log;
+use Throwable;
 
 class ActivationController extends Controller
 {
@@ -44,8 +45,10 @@ class ActivationController extends Controller
         ]);
 
         return response()->json([
+            'message' => 'Order initiated. Please complete payment.',
             'order' => new OrderResource($order->load(['service', 'country'])),
             'checkout_url' => $order->lendoverify_checkout_url,
+            'payment_gateway_link' => $order->lendoverify_checkout_url,
         ], 201);
     }
 
@@ -63,12 +66,15 @@ class ActivationController extends Controller
         $result = $this->lendoverify->verifyReference($order->payment_reference);
         $data = $result['data'] ?? $result;
 
-        $paymentStatus = $data['paymentStatus'] ?? $data['status'] ?? null;
+        $paymentStatusRaw = $data['paymentStatus'] ?? $data['status'] ?? null;
+        $paymentStatus = is_string($paymentStatusRaw)
+            ? strtolower(trim($paymentStatusRaw))
+            : null;
 
-        if (! in_array($paymentStatus, ['success', 'successful', 'completed'])) {
+        if (! in_array($paymentStatus, ['paid', 'success', 'successful', 'completed'], true)) {
             return response()->json([
                 'message' => 'Payment not confirmed yet.',
-                'payment_status' => $paymentStatus,
+                'payment_status' => $paymentStatusRaw,
             ], 402);
         }
 
@@ -87,7 +93,38 @@ class ActivationController extends Controller
 
         $order->update(['status' => 'paid']);
 
-        $activation = $this->activationService->processAfterPayment($order);
+        try {
+            $activation = $this->activationService->processAfterPayment($order);
+        } catch (Throwable $e) {
+            $message = strtolower($e->getMessage());
+
+            if (str_contains($message, 'not enough user balance')) {
+                Log::channel('activity')->error('Provider balance insufficient after successful payment', [
+                    'order_id' => $order->id,
+                    'user_id' => $request->user()->id,
+                    'provider' => '5sim',
+                    'error' => $e->getMessage(),
+                ]);
+
+                return response()->json([
+                    'message' => 'Payment received, but number allocation is temporarily unavailable. Please contact support for immediate assistance.',
+                    'code' => 'PROVIDER_INSUFFICIENT_BALANCE',
+                    'order_id' => $order->id,
+                ], 503);
+            }
+
+            Log::channel('activity')->error('Payment verified but activation provisioning failed', [
+                'order_id' => $order->id,
+                'user_id' => $request->user()->id,
+                'error' => $e->getMessage(),
+            ]);
+
+            return response()->json([
+                'message' => 'Payment received, but activation provisioning failed. Please try again shortly or contact support.',
+                'code' => 'ACTIVATION_PROVISIONING_FAILED',
+                'order_id' => $order->id,
+            ], 503);
+        }
 
         Log::channel('activity')->info('Payment verified, number assigned', [
             'order_id' => $order->id,
@@ -137,7 +174,7 @@ class ActivationController extends Controller
         ]);
     }
 
-    public function cancel(Activation $activation): JsonResponse
+    public function cancel(Request $request, Activation $activation): JsonResponse
     {
         $this->authorize('cancel', $activation);
 

@@ -10,6 +10,7 @@ use App\Http\Resources\AdminStatsResource;
 use App\Models\Activation;
 use App\Models\Order;
 use App\Models\User;
+use App\Models\Withdrawal;
 use App\Services\ActivationService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -57,21 +58,32 @@ class AdminActivationController extends Controller
 
     public function stats(): AdminStatsResource
     {
+        $completedOrders = Order::query()->where('status', OrderStatus::Completed);
+
         return new AdminStatsResource([
             'total_orders' => Order::count(),
-            'total_revenue' => Order::where('status', OrderStatus::Completed)->sum('price'),
+            'completed_sales_count' => (clone $completedOrders)->count(),
+            'total_revenue' => (clone $completedOrders)->sum('price'),
+            'total_profit' => (clone $completedOrders)->sum('profit_amount'),
             'active_activations' => Activation::whereNotIn('status', [
                 ActivationStatus::Completed->value,
                 ActivationStatus::Expired->value,
                 ActivationStatus::Cancelled->value,
             ])->count(),
             'registered_users' => User::count(),
-            'revenue_today' => Order::where('status', OrderStatus::Completed)
+            'revenue_today' => (clone $completedOrders)
                 ->whereDate('created_at', today())->sum('price'),
-            'revenue_week' => Order::where('status', OrderStatus::Completed)
+            'revenue_week' => (clone $completedOrders)
                 ->where('created_at', '>=', now()->startOfWeek())->sum('price'),
-            'revenue_month' => Order::where('status', OrderStatus::Completed)
+            'revenue_month' => (clone $completedOrders)
                 ->where('created_at', '>=', now()->startOfMonth())->sum('price'),
+            'profit_today' => (clone $completedOrders)
+                ->whereDate('created_at', today())->sum('profit_amount'),
+            'profit_week' => (clone $completedOrders)
+                ->where('created_at', '>=', now()->startOfWeek())->sum('profit_amount'),
+            'profit_month' => (clone $completedOrders)
+                ->where('created_at', '>=', now()->startOfMonth())->sum('profit_amount'),
+            'total_withdrawals' => (float) Withdrawal::sum('amount'),
         ]);
     }
 }

@@ -44,6 +44,7 @@ export default function ServicesPage() {
   const [loadingCountries, setLoadingCountries] = useState(false);
   const [selectedCountry, setSelectedCountry] = useState<ServicePrice | null>(null);
   const [buying, setBuying] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
   const { user, loading: authLoading } = useAuthStore();
   const router = useRouter();
 
@@ -53,9 +54,18 @@ export default function ServicesPage() {
 
   useEffect(() => {
     api.get('/services')
-      .then(({ data }) => setServices(data.data ?? data))
+      .then((res) => {
+        const data = Array.isArray(res.data) ? res.data : (res.data.data || []);
+        setServices(data);
+      })
       .catch(() => toast.error('Failed to load services'))
       .finally(() => setLoading(false));
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      document.body.style.overflow = '';
+    };
   }, []);
 
   const filtered = useMemo(
@@ -68,10 +78,24 @@ export default function ServicesPage() {
     setSelectedCountry(null);
     setCountries([]);
     setLoadingCountries(true);
+    // Prevent background scrolling while modal is open
+    document.body.style.overflow = 'hidden';
+    
     api.get(`/services/${service.slug}/countries`)
-      .then(({ data }) => setCountries(data.data ?? data))
-      .catch(() => toast.error('Failed to load countries'))
+      .then((res) => {
+        const data = Array.isArray(res.data) ? res.data : (res.data.data || []);
+        setCountries(data);
+      })
+      .catch((err: unknown) => {
+        const e = err as { response?: { data?: { message?: string; error?: string } } };
+        toast.error(e.response?.data?.error ?? e.response?.data?.message ?? 'Failed to load countries');
+      })
       .finally(() => setLoadingCountries(false));
+  };
+
+  const closeSelection = () => {
+    setSelected(null);
+    document.body.style.overflow = '';
   };
 
   const handleBuy = async () => {
@@ -80,10 +104,15 @@ export default function ServicesPage() {
     setBuying(true);
     try {
       const { data } = await api.post('/activations/buy', {
-        service_id: selectedCountry.service.id,
+        service_id: selectedCountry.service.id, // Using the correct ID from relation
         country_id: selectedCountry.country.id,
       });
-      const url = data.checkout_url ?? data.order?.lendoverify_checkout_url;
+      const url =
+        data.payment_gateway_link
+        ?? data.checkout_url
+        ?? data.order?.checkout_url
+        ?? data.order?.lendoverify_checkout_url;
+
       if (url) {
         window.location.href = url;
       } else {
@@ -109,227 +138,269 @@ export default function ServicesPage() {
 
   return (
     <div className="flex h-screen overflow-hidden bg-[#f5f7f8]">
-      <DashboardSidebar />
+      <DashboardSidebar mobileOpen={sidebarOpen} setMobileOpen={setSidebarOpen} />
 
-      <main className="flex-1 flex flex-col overflow-hidden">
+      <main className="flex-1 flex flex-col overflow-hidden w-full relative h-[100dvh]">
         {/* ── Top header ─── */}
-        <header className="h-16 border-b border-slate-200 bg-white flex items-center justify-between px-8 flex-shrink-0">
-          <div className="flex-1 max-w-xl">
-            <div className="relative group">
-              <span
+        <header className="h-16 border-b border-slate-200 bg-white flex items-center justify-between px-4 md:px-8 flex-shrink-0 z-20">
+          <div className="flex items-center gap-2 md:gap-0 flex-1">
+            <button 
+                className="md:hidden mr-2 p-2 -ml-2 text-slate-500 hover:bg-slate-100 rounded-lg"
+                onClick={() => setSidebarOpen(true)}
+            >
+                <span className="material-symbols-outlined">menu</span>
+            </button>
+
+            <div className="relative group w-full max-w-xl">
+                <span
                 className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-[#0f6df0]"
                 style={{ fontSize: 20 }}
-              >
+                >
                 search
-              </span>
-              <input
+                </span>
+                <input
                 className="w-full pl-10 pr-4 py-2 bg-slate-100 border-none rounded-lg focus:ring-2 focus:ring-[#0f6df0]/20 focus:bg-white outline-none text-sm transition-all"
                 placeholder="Search for a service..."
                 type="text"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-              />
+                />
             </div>
           </div>
 
-          <div className="flex items-center gap-4">
-            <button className="p-2 text-slate-500 hover:bg-slate-100 rounded-lg relative">
+          <div className="flex items-center gap-2 md:gap-4 pl-4">
+            <button className="p-2 text-slate-500 hover:bg-slate-100 rounded-lg relative hidden sm:block">
               <span className="material-symbols-outlined" style={{ fontSize: 22 }}>notifications</span>
               <span className="absolute top-2 right-2 w-2 h-2 bg-red-500 rounded-full border-2 border-white" />
             </button>
-            <div className="h-8 w-px bg-slate-200" />
+            <div className="h-8 w-px bg-slate-200 hidden sm:block" />
+            
             <div className="flex items-center gap-3">
-              <div className="text-right hidden sm:block">
+              <div className="text-right hidden md:block">
                 <p className="text-sm font-semibold text-slate-900">{user.name}</p>
                 <p className="text-xs text-slate-500">Free Account</p>
               </div>
-              <div className="h-10 w-10 rounded-full bg-[#0f6df0]/20 flex items-center justify-center text-[#0f6df0] font-bold border-2 border-[#0f6df0]/10 text-sm">
-                {user.name.charAt(0).toUpperCase()}
+              <div className="h-10 w-10 rounded-full bg-[#0f6df0]/20 flex items-center justify-center text-[#0f6df0] font-bold border-2 border-[#0f6df0]/10 text-xl overflow-hidden">
+                {user.avatar ? (
+                    <img src={user.avatar} alt={user.name} className="w-full h-full object-cover" />
+                ) : (
+                    user.name.charAt(0).toUpperCase()
+                )}
               </div>
             </div>
           </div>
         </header>
 
         {/* ── Scrollable content ─── */}
-        <div className="flex-1 overflow-y-auto p-8">
-          <div className="mb-8">
-            <h2 className="text-2xl font-bold mb-2 text-slate-900">Buy a Number</h2>
-            <p className="text-slate-500">
-              Select a service to start receiving SMS verifications instantly via direct payment.
+        <div className="flex-1 overflow-y-auto p-4 md:p-8 bg-[#f5f7f8]">
+          <div className="mb-6 md:mb-8">
+            <h2 className="text-xl md:text-2xl font-bold mb-2 text-slate-900">Buy a Number</h2>
+            <p className="text-sm md:text-base text-slate-500">
+              Select a service to start receiving SMS verifications instantly.
             </p>
           </div>
 
           {/* Service Grid */}
           {loading ? (
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
-              {Array.from({ length: 10 }).map((_, i) => (
-                <div key={i} className="h-36 bg-white rounded-xl border border-slate-200 animate-pulse" />
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-5 gap-3 md:gap-4 pb-20">
+              {Array.from({ length: 15 }).map((_, i) => (
+                <div key={i} className="aspect-square md:h-36 bg-white rounded-xl border border-slate-200 animate-pulse shadow-sm" />
               ))}
             </div>
           ) : (
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-5 gap-3 md:gap-4 pb-24 md:pb-8">
               {filtered.map((service) => {
                 const style = getStyle(service.name);
+                const isSelected = selected?.id === service.id;
                 return (
                   <button
                     key={service.id}
                     onClick={() => selectService(service)}
-                    className={`flex flex-col items-center p-6 bg-white rounded-xl border transition-all group relative overflow-hidden ${
-                      selected?.id === service.id
-                        ? 'border-[#0f6df0] shadow-lg shadow-[#0f6df0]/10 bg-[#0f6df0]/[0.02]'
-                        : 'border-slate-200 hover:border-[#0f6df0] hover:shadow-lg'
+                    className={`flex flex-col items-center justify-center p-4 md:p-6 bg-white rounded-xl border transition-all group relative overflow-hidden aspect-square md:aspect-auto md:h-40 ${
+                        isSelected
+                        ? 'border-[#0f6df0] shadow-lg shadow-[#0f6df0]/10 bg-[#0f6df0]/[0.02] ring-1 ring-[#0f6df0]'
+                        : 'border-slate-200 hover:border-[#0f6df0] hover:shadow-md'
                     }`}
                   >
                     {style.hot && (
-                      <div className="absolute top-2 right-2 px-2 py-0.5 bg-[#0f6df0] text-[10px] text-white font-bold rounded">
+                      <div className="absolute top-2 right-2 px-1.5 py-0.5 bg-rose-500 text-[9px] md:text-[10px] text-white font-bold rounded shadow-sm">
                         HOT
                       </div>
                     )}
                     <div
-                      className={`w-14 h-14 rounded-full ${style.bg} flex items-center justify-center ${style.text} mb-4 group-hover:scale-110 transition-transform`}
+                      className={`w-12 h-12 md:w-14 md:h-14 rounded-full ${style.bg} flex items-center justify-center ${style.text} mb-3 md:mb-4 group-hover:scale-110 transition-transform duration-300`}
                     >
-                      <span className="material-symbols-outlined" style={{ fontSize: 28 }}>{style.icon}</span>
+                      <span className="material-symbols-outlined text-[26px] md:text-[32px]">{style.icon}</span>
                     </div>
-                    <h3 className="font-bold text-slate-900 text-sm">{service.name}</h3>
-                    <p className="text-xs text-slate-500 mt-1">Select country</p>
+                    <h3 className="font-bold text-slate-900 text-xs md:text-sm text-center line-clamp-1 w-full">{service.name}</h3>
+                    <p className="text-[10px] md:text-xs text-slate-400 mt-1 font-medium">Auto-detect</p>
                   </button>
                 );
               })}
 
-              {/* Other Services card */}
-              <button
-                onClick={() => setSearch('')}
-                className="flex flex-col items-center p-6 bg-slate-100 rounded-xl border border-dashed border-slate-300 hover:bg-slate-200 transition-all group"
-              >
-                <div className="w-14 h-14 rounded-full bg-white flex items-center justify-center text-slate-400 mb-4">
-                  <span className="material-symbols-outlined" style={{ fontSize: 28 }}>add</span>
+              {!loading && filtered.length === 0 && (
+                <div className="col-span-full flex flex-col items-center justify-center py-20 text-slate-400">
+                    <span className="material-symbols-outlined text-4xl mb-2">search_off</span>
+                    <p>No services found matching &quot;{search}&quot;</p>
                 </div>
-                <h3 className="font-bold text-slate-600 text-sm">Other Services</h3>
-                <p className="text-xs text-slate-500 mt-1">Browse 100+ platforms</p>
-              </button>
+              )}
             </div>
           )}
 
-          {/* Configure Activation panel */}
+            {/* Configure Activation Panel */}
           {selected && (
-            <div className="mt-12 p-8 bg-white rounded-2xl border border-slate-200 shadow-xl max-w-4xl mx-auto">
-              {/* Panel header */}
-              <div className="flex items-center justify-between mb-8 pb-6 border-b border-slate-100">
-                <div className="flex items-center gap-4">
-                  {selStyle && (
-                    <div className={`w-12 h-12 rounded-lg ${selStyle.bg} flex items-center justify-center ${selStyle.text}`}>
-                      <span className="material-symbols-outlined" style={{ fontSize: 24 }}>{selStyle.icon}</span>
+            <div className="fixed inset-0 z-[60]">
+               <div
+               className="absolute inset-0 bg-black/60 backdrop-blur-sm animate-in fade-in transition-opacity"
+               onClick={closeSelection}
+               />
+
+               <div className="absolute inset-0 md:p-6 md:flex md:items-center md:justify-center">
+                <div
+                  className="h-full w-full bg-white rounded-none md:rounded-2xl shadow-2xl overflow-hidden flex flex-col md:max-w-5xl md:max-h-[88vh]"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  {/* Header */}
+                  <div className="flex items-center justify-between p-4 md:p-6 border-b border-slate-100 flex-shrink-0 bg-white z-10">
+                    <div className="flex items-center gap-4">
+                      {selStyle && (
+                        <div className={`hidden md:flex w-12 h-12 rounded-xl ${selStyle.bg} items-center justify-center ${selStyle.text}`}>
+                          <span className="material-symbols-outlined" style={{ fontSize: 24 }}>{selStyle.icon}</span>
+                        </div>
+                      )}
+                      <div>
+                        <h3 className="text-lg md:text-xl font-bold text-slate-900 flex items-center gap-2">
+                          <button onClick={closeSelection} className="md:hidden -ml-2 p-1 text-slate-500">
+                            <span className="material-symbols-outlined">arrow_back</span>
+                          </button>
+                          Configure {selected.name}
+                        </h3>
+                        <p className="text-xs md:text-sm text-slate-500">Select country, check stock and confirm price.</p>
+                      </div>
                     </div>
-                  )}
-                  <div>
-                    <h3 className="text-xl font-bold text-slate-900">Configure {selected.name} Activation</h3>
-                    <p className="text-sm text-slate-500">Select your preferred country to proceed with direct payment.</p>
+                    <button
+                      onClick={closeSelection}
+                      className="hidden md:flex w-8 h-8 items-center justify-center rounded-full hover:bg-slate-100 text-slate-400 transition-colors"
+                    >
+                      <span className="material-symbols-outlined">close</span>
+                    </button>
                   </div>
-                </div>
-                <button onClick={() => setSelected(null)} className="text-slate-400 hover:text-slate-600 transition-colors">
-                  <span className="material-symbols-outlined">close</span>
-                </button>
-              </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                {/* Country list */}
-                <div>
-                  <label className="block text-sm font-semibold mb-3 text-slate-900">1. Select Country</label>
-                  {loadingCountries ? (
-                    <div className="space-y-2">
-                      {[1, 2, 3].map((i) => (
-                        <div key={i} className="h-16 bg-slate-100 rounded-xl animate-pulse" />
-                      ))}
+                  {/* Content Body */}
+                  <div className="flex-1 min-h-0 flex flex-col md:flex-row bg-slate-50/50">
+                    {/* Left: Country Selection */}
+                    <div className="flex-1 min-h-0 overflow-y-auto p-4 md:p-6 md:border-r border-slate-200">
+                      <label className="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-3 sticky top-0 bg-slate-50/95 backdrop-blur py-2 z-10 w-full">
+                        1. Select Country
+                      </label>
+
+                      {loadingCountries ? (
+                        <div className="space-y-3">
+                          {[1, 2, 3, 4].map((i) => (
+                            <div key={i} className="h-16 bg-white rounded-xl border border-slate-200 animate-pulse" />
+                          ))}
+                        </div>
+                      ) : countries.length === 0 ? (
+                        <div className="flex flex-col items-center justify-center py-12 text-center">
+                          <span className="material-symbols-outlined text-4xl text-slate-300 mb-2">public_off</span>
+                          <p className="text-slate-500 font-medium">No countries available</p>
+                          <p className="text-xs text-slate-400">Try again later.</p>
+                        </div>
+                      ) : (
+                        <div className="grid grid-cols-1 gap-2 pb-4">
+                          {countries.map((sp) => (
+                            <button
+                              key={sp.id}
+                              onClick={() => setSelectedCountry(sp)}
+                              className={`
+                                group flex items-center justify-between p-3 md:p-4 rounded-xl border transition-all relative overflow-hidden
+                                ${selectedCountry?.id === sp.id
+                                  ? 'bg-white border-[#0f6df0] shadow-[0_0_0_1px_#0f6df0] z-10'
+                                  : 'bg-white border-slate-200 hover:border-[#0f6df0] hover:shadow-md'
+                                }
+                              `}
+                            >
+                              <div className="flex items-center gap-3 md:gap-4 relative z-10">
+                                <span className="text-2xl md:text-3xl">{sp.country.flag}</span>
+                                <div className="text-left">
+                                  <p className="font-bold text-slate-900 text-sm md:text-base">{sp.country.name}</p>
+                                  <p className="text-[10px] md:text-xs text-slate-400 font-medium uppercase tracking-wide">{sp.country.code}</p>
+                                </div>
+                              </div>
+                              <div className="text-right relative z-10">
+                                <p className="font-black text-[#0f6df0] text-sm md:text-lg">₦{Number(sp.final_price).toLocaleString()}</p>
+                                <p className="text-[10px] text-emerald-600 font-bold bg-emerald-50 px-1.5 rounded-md inline-block">
+                                  {(sp.available_count ?? 0) > 50 ? '50+ numbers' : `${sp.available_count ?? 0} numbers`}
+                                </p>
+                              </div>
+                            </button>
+                          ))}
+                        </div>
+                      )}
                     </div>
-                  ) : countries.length === 0 ? (
-                    <p className="text-center py-8 text-slate-400 text-sm">No countries available</p>
-                  ) : (
-                    <div className="space-y-2 max-h-[400px] overflow-y-auto pr-1">
-                      {countries.map((sp) => (
-                        <button
-                          key={sp.id}
-                          onClick={() => setSelectedCountry(sp)}
-                          className={`w-full flex items-center justify-between p-4 rounded-xl border-2 transition-all text-left ${
-                            selectedCountry?.id === sp.id
-                              ? 'border-[#0f6df0] bg-[#0f6df0]/5'
-                              : 'border-slate-200 hover:bg-slate-50'
-                          }`}
-                        >
-                          <div className="flex items-center gap-3">
-                            <span className="text-xl leading-none">{sp.country.flag ?? '🌍'}</span>
-                            <span className="font-medium text-slate-900 text-sm">{sp.country.name}</span>
+
+                    {/* Right: Order Summary */}
+                    <div className="w-full md:w-80 md:flex-shrink-0 bg-white border-t md:border-t-0 md:border-l border-slate-200 p-4 md:p-6 flex flex-col gap-4">
+                      <label className="block text-xs font-bold uppercase tracking-wider text-slate-400">
+                        2. Order Details
+                      </label>
+
+                      <div className="bg-slate-50 rounded-xl p-4 border border-slate-100">
+                        <div className="space-y-3">
+                          <div className="flex justify-between items-center text-sm">
+                            <span className="text-slate-500">Service</span>
+                            <span className="font-bold text-slate-900 flex items-center gap-1">
+                              {selStyle && <span className={`material-symbols-outlined text-[16px] ${selStyle.text}`}>{selStyle.icon}</span>}
+                              {selected.name}
+                            </span>
                           </div>
-                          <div className="text-right">
-                            <p className="font-bold text-slate-900 text-sm">₦{Number(sp.final_price).toLocaleString()}</p>
-                            <p className="text-[10px] text-green-500 uppercase font-bold">In Stock</p>
+                          <div className="flex justify-between items-center text-sm">
+                            <span className="text-slate-500">Country</span>
+                            <span className="font-bold text-slate-900">
+                              {selectedCountry ? selectedCountry.country.name : 'Not selected'}
+                            </span>
                           </div>
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                </div>
+                          <div className="flex justify-between items-center text-sm">
+                            <span className="text-slate-500">Stock</span>
+                            <span className="font-bold text-slate-900">
+                              {selectedCountry ? `${selectedCountry.available_count ?? 0} available` : '—'}
+                            </span>
+                          </div>
+                          <div className="h-px bg-slate-200 my-2" />
+                          <div className="flex justify-between items-center">
+                            <span className="font-bold text-slate-700">Total</span>
+                            <span className="font-black text-xl text-[#0f6df0]">
+                              {selectedCountry ? `₦${Number(selectedCountry.final_price).toLocaleString()}` : '₦0'}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
 
-                {/* Order summary */}
-                <div className="flex flex-col">
-                  <label className="block text-sm font-semibold mb-3 text-slate-900">2. Order Summary</label>
-                  <div className="bg-slate-50 rounded-xl p-6 flex flex-col flex-1">
-                    <div className="space-y-4 flex-1">
-                      <div className="flex justify-between text-sm">
-                        <span className="text-slate-500">Service</span>
-                        <span className="font-semibold text-slate-900">{selected.name}</span>
-                      </div>
-                      <div className="flex justify-between text-sm">
-                        <span className="text-slate-500">Country</span>
-                        <span className="font-semibold text-slate-900">
-                          {selectedCountry ? selectedCountry.country.name : '—'}
-                        </span>
-                      </div>
-                      <div className="flex justify-between text-sm">
-                        <span className="text-slate-500">Validity</span>
-                        <span className="font-semibold text-slate-900">20 Minutes</span>
-                      </div>
-                      <div className="h-px bg-slate-200 my-2" />
-                      <div className="flex justify-between items-center">
-                        <span className="font-bold text-slate-900">Total Price</span>
-                        <span className="text-2xl font-bold text-[#0f6df0]">
-                          {selectedCountry ? `₦${Number(selectedCountry.final_price).toLocaleString()}` : '₦—'}
-                        </span>
-                      </div>
-                    </div>
-
-                    <div className="mt-8 space-y-4">
-                      <div className="bg-blue-50 p-3 rounded-lg border border-blue-100">
-                        <p className="text-[11px] text-blue-700 flex items-start gap-2">
-                          <span className="material-symbols-outlined flex-shrink-0" style={{ fontSize: 14 }}>info</span>
-                          Clicking &apos;Purchase Now&apos; will securely redirect you to{' '}
-                          <strong>Lendoverify payment gateway</strong> to complete your transaction.
-                        </p>
-                      </div>
                       <button
                         onClick={handleBuy}
                         disabled={!selectedCountry || buying}
-                        className="w-full bg-[#0f6df0] text-white py-4 rounded-xl font-bold text-lg hover:bg-[#0d5ed9] transition-all flex items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed"
-                        style={{ boxShadow: '0 4px 16px rgba(15,109,240,0.25)' }}
+                        className="w-full py-3.5 bg-[#0f6df0] hover:bg-[#0d5ed9] text-white rounded-xl font-bold text-base shadow-lg shadow-[#0f6df0]/25 disabled:opacity-50 disabled:shadow-none transition-all flex items-center justify-center gap-2 active:scale-95"
                       >
                         {buying ? (
                           <>
-                            <span className="material-symbols-outlined animate-spin" style={{ fontSize: 20 }}>refresh</span>
+                            <span className="material-symbols-outlined animate-spin text-[20px]">refresh</span>
                             Processing...
                           </>
                         ) : (
                           <>
-                            <span className="material-symbols-outlined" style={{ fontSize: 20 }}>payment</span>
-                            Purchase Now
+                            Purchase Number
+                            <span className="material-symbols-outlined text-[20px]">arrow_forward</span>
                           </>
                         )}
                       </button>
-                      <p className="text-[10px] text-center text-slate-400">
-                        Instant activation upon successful payment confirmation.
+
+                      <p className="text-center text-[10px] text-slate-400">
+                        Secure payment via gateway checkout
                       </p>
                     </div>
                   </div>
                 </div>
-              </div>
+               </div>
             </div>
           )}
         </div>

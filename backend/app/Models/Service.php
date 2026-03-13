@@ -6,6 +6,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Str;
+use Illuminate\Database\Eloquent\ModelNotFoundException;
 
 class Service extends Model
 {
@@ -37,6 +38,26 @@ class Service extends Model
     public function getRouteKeyName(): string
     {
         return 'slug';
+    }
+
+    public function resolveRouteBinding($value, $field = null)
+    {
+        $lookup = strtolower((string) $value);
+
+        if ($lookup === 'whatapp') {
+            $lookup = 'whatsapp';
+        }
+
+        $service = $this->newQuery()
+            ->where($field ?? 'slug', $lookup)
+            ->orWhere('provider_service_code', $lookup)
+            ->first();
+
+        if (! $service) {
+            throw (new ModelNotFoundException())->setModel(self::class, [$value]);
+        }
+
+        return $service;
     }
 
     public function servicePrices(): HasMany

@@ -16,6 +16,7 @@ export default function ServiceDetailPage() {
   const [loading, setLoading] = useState(true);
   const [buyingId, setBuyingId] = useState<number | null>(null);
   const [search, setSearch] = useState('');
+  const [sidebarOpen, setSidebarOpen] = useState(false);
   const user = useAuthStore((s) => s.user);
   const router = useRouter();
 
@@ -61,9 +62,17 @@ export default function ServiceDetailPage() {
   };
 
   const content = (
-    <div className="flex-1 p-8 min-h-screen">
+    <div className="flex-1 p-4 md:p-8 min-h-screen">
       {/* Header */}
       <div className="mb-8">
+        <button
+          className="md:hidden inline-flex items-center gap-2 text-sm text-slate-500 hover:text-[#0f6df0] mb-3"
+          onClick={() => setSidebarOpen(true)}
+          aria-label="Open menu"
+        >
+          <span className="material-symbols-outlined text-base">menu</span>
+          Menu
+        </button>
         <Link
           href="/services"
           className="inline-flex items-center gap-2 text-sm text-gray-500 hover:text-[#0f6df0] mb-4 transition-colors"
@@ -182,8 +191,8 @@ export default function ServiceDetailPage() {
 
   if (user) {
     return (
-      <div className="flex min-h-screen bg-[#f8fafc]">
-        <DashboardSidebar />
+      <div className="flex h-screen overflow-hidden bg-[#f8fafc]">
+        <DashboardSidebar mobileOpen={sidebarOpen} setMobileOpen={setSidebarOpen} />
         {content}
       </div>
     );

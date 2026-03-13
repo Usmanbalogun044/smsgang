@@ -4,7 +4,13 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useAuthStore } from '@/store/auth';
 
-export default function DashboardSidebar() {
+type Props = {
+  mobileOpen?: boolean;
+  setMobileOpen?: (open: boolean) => void;
+  className?: string; // Add className prop for flexibility
+};
+
+export default function DashboardSidebar({ mobileOpen = false, setMobileOpen }: Props) {
   const pathname = usePathname();
   const router = useRouter();
   const { user, logout } = useAuthStore();
@@ -13,6 +19,8 @@ export default function DashboardSidebar() {
     await logout();
     router.push('/login');
   };
+
+  const closeMobile = () => setMobileOpen?.(false);
 
   const linkClass = (href: string) => {
     const active = pathname === href || pathname.startsWith(href + '/');
@@ -24,26 +32,40 @@ export default function DashboardSidebar() {
   };
 
   return (
-    <aside className="w-64 border-r border-slate-200 bg-white flex flex-col flex-shrink-0">
-      {/* Logo */}
-      <div className="p-6 flex items-center gap-3">
-        <div className="bg-[#0f6df0] p-2 rounded-lg text-white">
-          <span className="material-symbols-outlined block" style={{ fontSize: 20 }}>sms</span>
+    <>
+      <div 
+        className={`fixed inset-0 bg-black/50 z-40 md:hidden backdrop-blur-sm transition-opacity ${mobileOpen ? 'block' : 'hidden'}`}
+        onClick={() => setMobileOpen?.(false)}
+      />
+      <aside 
+        className={`fixed inset-y-0 left-0 z-50 w-64 h-screen bg-white border-r border-slate-200 flex flex-col transform transition-transform duration-300 md:static md:translate-x-0 ${mobileOpen ? 'translate-x-0' : '-translate-x-full'}`}
+      >
+        {/* Mobile Header with Close Button */}
+        <div className="md:hidden absolute top-4 right-4 z-50">
+           <button onClick={() => setMobileOpen?.(false)} className="p-2 text-slate-400 hover:text-slate-600">
+             <span className="material-symbols-outlined">close</span>
+           </button>
         </div>
-        <h1 className="text-xl font-bold tracking-tight text-slate-900">SMSGang</h1>
-      </div>
+
+        {/* Logo */}
+        <div className="p-6 flex items-center gap-3">
+          <div className="bg-[#0f6df0] p-2 rounded-lg text-white">
+            <span className="material-symbols-outlined block" style={{ fontSize: 20 }}>sms</span>
+          </div>
+          <h1 className="text-xl font-bold tracking-tight text-slate-900">SMSGang</h1>
+        </div>
 
       {/* Nav */}
       <nav className="flex-1 px-4 space-y-1">
-        <Link href="/services" className={linkClass('/services')}>
+        <Link href="/services" className={linkClass('/services')} onClick={closeMobile}>
           <span className="material-symbols-outlined" style={{ fontSize: 20 }}>dashboard</span>
           Dashboard
         </Link>
-        <Link href="/activations" className={linkClass('/activations')}>
+        <Link href="/activations" className={linkClass('/activations')} onClick={closeMobile}>
           <span className="material-symbols-outlined" style={{ fontSize: 20 }}>bolt</span>
           Active Activations
         </Link>
-        <Link href="/orders" className={linkClass('/orders')}>
+        <Link href="/orders" className={linkClass('/orders')} onClick={closeMobile}>
           <span className="material-symbols-outlined" style={{ fontSize: 20 }}>history</span>
           Order History
         </Link>
@@ -51,14 +73,14 @@ export default function DashboardSidebar() {
         <div className="pt-4 pb-2 px-3 text-xs font-bold text-slate-400 uppercase tracking-wider">
           Account
         </div>
-        <a href="#" className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-slate-600 hover:bg-slate-50 transition-colors text-sm font-medium">
+        <Link href="/settings" className={linkClass('/settings')} onClick={closeMobile}>
           <span className="material-symbols-outlined" style={{ fontSize: 20 }}>person</span>
           Profile
-        </a>
-        <a href="#" className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-slate-600 hover:bg-slate-50 transition-colors text-sm font-medium">
+        </Link>
+        <Link href="/settings" className={linkClass('/settings')} onClick={closeMobile}>
           <span className="material-symbols-outlined" style={{ fontSize: 20 }}>support_agent</span>
           Support
-        </a>
+        </Link>
       </nav>
 
       {/* Bottom */}
@@ -86,6 +108,7 @@ export default function DashboardSidebar() {
           Logout
         </button>
       </div>
-    </aside>
+      </aside>
+    </>
   );
 }

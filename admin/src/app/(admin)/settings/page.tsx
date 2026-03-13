@@ -1,61 +1,87 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import api from '@/lib/api';
 import toast from 'react-hot-toast';
 
-function InputField({
-  label, hint, prefix, type = 'number', value, onChange, min, step, required,
-}: {
-  label: string; hint?: string; prefix?: string; type?: string;
-  value: string; onChange: (v: string) => void;
-  min?: string; step?: string; required?: boolean;
-}) {
-  return (
-    <div>
-      <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">{label}</label>
-      {hint && <p className="text-xs text-slate-600 mb-3 leading-relaxed">{hint}</p>}
-      <div className="relative">
-        {prefix && (
-          <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500 text-xs font-semibold select-none">{prefix}</span>
-        )}
-        <input
-          type={type}
-          min={min}
-          step={step}
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-          required={required}
-          className={`w-full ${prefix ? 'pl-12' : 'pl-4'} pr-4 py-3 bg-[#0d1022] border border-[#1e2235] rounded-xl text-slate-200 placeholder-slate-600 focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500 outline-none transition-all text-sm`}
-        />
-      </div>
-    </div>
-  );
-}
+type SettingsSnapshot = {
+  global_markup: string;
+  exchange_rate: string;
+};
 
 export default function SettingsPage() {
   const [globalMarkup, setGlobalMarkup] = useState('');
   const [exchangeRate, setExchangeRate] = useState('');
+  const [initial, setInitial] = useState<SettingsSnapshot | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    api.get('/admin/settings').then(({ data }) => {
-      setGlobalMarkup(String(data.global_markup));
-      setExchangeRate(String(data.exchange_rate));
-    }).catch(() => toast.error('Failed to load settings'))
+    api
+      .get('/admin/settings')
+      .then(({ data }) => {
+        const snapshot = {
+          global_markup: String(data.global_markup ?? ''),
+          exchange_rate: String(data.exchange_rate ?? ''),
+        };
+
+        setGlobalMarkup(snapshot.global_markup);
+        setExchangeRate(snapshot.exchange_rate);
+        setInitial(snapshot);
+      })
+      .catch(() => toast.error('Failed to load settings'))
       .finally(() => setLoading(false));
   }, []);
 
+  const hasChanges = useMemo(() => {
+    if (!initial) return false;
+
+    return (
+      globalMarkup !== initial.global_markup ||
+      exchangeRate !== initial.exchange_rate
+    );
+  }, [globalMarkup, exchangeRate, initial]);
+
+  const handleDiscard = () => {
+    if (!initial) return;
+    setGlobalMarkup(initial.global_markup);
+    setExchangeRate(initial.exchange_rate);
+    toast('Changes discarded', { icon: '↩' });
+  };
+
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    const markup = Number(globalMarkup);
+    const rate = Number(exchangeRate);
+
+    if (!Number.isFinite(markup) || markup < 0) {
+      toast.error('Global markup must be a valid non-negative number');
+      return;
+    }
+
+    if (!Number.isFinite(rate) || rate <= 0) {
+      toast.error('Exchange rate must be greater than 0');
+      return;
+    }
+
     setSaving(true);
+
     try {
       await api.put('/admin/settings', {
-        global_markup: parseFloat(globalMarkup),
-        exchange_rate: parseFloat(exchangeRate),
+        global_markup: markup,
+        exchange_rate: rate,
       });
-      toast.success('Settings saved!');
+
+      const snapshot = {
+        global_markup: String(markup),
+        exchange_rate: String(rate),
+      };
+
+      setInitial(snapshot);
+      setGlobalMarkup(snapshot.global_markup);
+      setExchangeRate(snapshot.exchange_rate);
+      toast.success('Settings saved successfully');
     } catch {
       toast.error('Failed to save settings');
     } finally {
@@ -63,97 +89,177 @@ export default function SettingsPage() {
     }
   };
 
-  const previewPrice = exchangeRate && globalMarkup
-    ? (5 * parseFloat(exchangeRate) + parseFloat(globalMarkup)).toFixed(2)
-    : null;
-
-  if (loading) {
-    return (
-      <div>
-        <div className="mb-8">
-          <div className="w-40 h-7 bg-white/5 rounded animate-pulse mb-2" />
-          <div className="w-72 h-4 bg-white/5 rounded animate-pulse" />
-        </div>
-        <div className="max-w-xl space-y-4">
-          {[1, 2].map((i) => (
-            <div key={i} className="bg-[#111424] rounded-2xl border border-[#1e2235] p-6 animate-pulse">
-              <div className="w-32 h-4 bg-white/5 rounded mb-3" />
-              <div className="w-full h-11 bg-white/5 rounded-xl" />
-            </div>
-          ))}
-        </div>
-      </div>
-    );
-  }
+  const previewPrice =
+    exchangeRate && globalMarkup
+      ? (0.1 * Number(exchangeRate) + Number(globalMarkup)).toFixed(2)
+      : null;
 
   return (
-    <div>
-      <div className="mb-8">
-        <h1 className="text-2xl font-bold text-white tracking-tight">Pricing Settings</h1>
-        <p className="text-sm text-slate-500 mt-1">
-          Set your profit margin and exchange rate — applies to <span className="text-slate-300 font-medium">all services</span> automatically.
-        </p>
+    <div className="min-h-screen bg-[#f5f7f8] dark:bg-[#101822]">
+      <header className="h-16 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 flex items-center justify-between px-8">
+        <div className="flex items-center gap-2 text-[#0f6df0]">
+          <span className="material-symbols-outlined">settings</span>
+          <h2 className="text-lg font-bold tracking-tight text-slate-900 dark:text-slate-100">Global Settings</h2>
+        </div>
+
+        <div className="flex items-center gap-3">
+          <button className="p-2 text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors relative">
+            <span className="material-symbols-outlined">notifications</span>
+            <span className="absolute top-2 right-2 size-2 bg-red-500 rounded-full border-2 border-white dark:border-slate-900" />
+          </button>
+          <button className="p-2 text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors">
+            <span className="material-symbols-outlined">account_circle</span>
+          </button>
+        </div>
+      </header>
+
+      <div className="px-8 py-6">
+        <nav className="flex items-center gap-2 text-sm text-slate-500 dark:text-slate-400 mb-4">
+          <span>Admin</span>
+          <span className="material-symbols-outlined text-xs">chevron_right</span>
+          <span className="text-slate-900 dark:text-slate-100 font-medium">Settings</span>
+        </nav>
+
+        <div>
+          <h3 className="text-3xl font-black text-slate-900 dark:text-slate-100 tracking-tight">Global Settings</h3>
+          <p className="text-slate-500 dark:text-slate-400 mt-1 max-w-2xl">
+            Configure system-wide financial parameters, currency exchange rates, and transaction markups for all regions.
+          </p>
+        </div>
       </div>
 
-      <div className="max-w-xl">
-        <form onSubmit={handleSave}>
-          <div className="bg-[#111424] rounded-2xl border border-[#1e2235] p-6 space-y-6 mb-4">
-            <InputField
-              label="Profit Per Activation (₦)"
-              hint="Flat NGN amount added on top of the 5SIM base price for every activation. E.g. 100 = ₦100 profit per sale."
-              prefix="₦"
-              value={globalMarkup}
-              onChange={setGlobalMarkup}
-              min="0"
-              step="0.01"
-              required
-            />
-            <InputField
-              label="Exchange Rate (₦ per 1 RUB)"
-              hint="5SIM prices are in Rubles. This converts them to NGN before adding your markup. Check xe.com for the current rate."
-              prefix="RUB→₦"
-              value={exchangeRate}
-              onChange={setExchangeRate}
-              min="0.01"
-              step="0.01"
-              required
-            />
-          </div>
+      <div className="px-8 pb-12 flex-1 overflow-y-auto">
+        <div className="max-w-4xl space-y-8">
+          <form onSubmit={handleSave}>
+            <section className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 overflow-hidden shadow-sm">
+              <div className="p-6 border-b border-slate-100 dark:border-slate-800">
+                <h4 className="text-lg font-bold flex items-center gap-2 text-slate-900 dark:text-slate-100">
+                  <span className="material-symbols-outlined text-[#0f6df0]">payments</span>
+                  Financial Configuration
+                </h4>
+              </div>
 
-          {/* Formula preview */}
-          <div className="bg-indigo-500/[0.08] border border-indigo-500/20 rounded-2xl p-5 mb-5">
-            <div className="flex items-center gap-2 mb-3">
-              <svg className="w-4 h-4 text-indigo-400" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-                <path d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z"/>
-              </svg>
-              <p className="text-sm font-semibold text-indigo-300">Price Formula</p>
+              <div className="p-8 space-y-8">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6 items-start">
+                  <div className="space-y-1">
+                    <label className="text-sm font-bold text-slate-900 dark:text-slate-100">Global Markup (Fixed NGN)</label>
+                    <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
+                      Set a flat fee markup applied to every activation transaction.
+                    </p>
+                  </div>
+
+                  <div className="md:col-span-2">
+                    <div className="relative max-w-xs">
+                      <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                        <span className="text-slate-500 font-medium">N</span>
+                      </div>
+
+                      <input
+                        className="block w-full pl-8 pr-12 py-3 border border-slate-200 dark:border-slate-700 rounded-lg bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-[#0f6df0] focus:border-transparent transition-all outline-none"
+                        placeholder="0.00"
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={globalMarkup}
+                        onChange={(e) => setGlobalMarkup(e.target.value)}
+                        disabled={loading}
+                        required
+                      />
+
+                      <div className="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none">
+                        <span className="text-xs text-slate-400 font-bold">NGN</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <hr className="border-slate-100 dark:border-slate-800" />
+
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6 items-start">
+                  <div className="space-y-1">
+                    <label className="text-sm font-bold text-slate-900 dark:text-slate-100">USD to NGN Exchange Rate</label>
+                    <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
+                      Specify the current conversion rate for United States Dollar to Nigerian Naira.
+                    </p>
+                  </div>
+
+                  <div className="md:col-span-2">
+                    <div className="flex items-center gap-4 max-w-sm">
+                      <div className="flex-1 relative">
+                        <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                          <span className="text-slate-500 font-medium">1 USD =</span>
+                        </div>
+
+                        <input
+                          className="block w-full pl-16 pr-12 py-3 border border-slate-200 dark:border-slate-700 rounded-lg bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-[#0f6df0] focus:border-transparent transition-all outline-none"
+                          placeholder="0.00"
+                          type="number"
+                          min="0.01"
+                          step="0.01"
+                          value={exchangeRate}
+                          onChange={(e) => setExchangeRate(e.target.value)}
+                          disabled={loading}
+                          required
+                        />
+
+                        <div className="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none">
+                          <span className="text-xs text-slate-400 font-bold">NGN</span>
+                        </div>
+                      </div>
+
+                      <div className="bg-[#0f6df0]/5 p-2 rounded-lg border border-[#0f6df0]/20 flex items-center justify-center">
+                        <span className="material-symbols-outlined text-[#0f6df0] text-xl">sync</span>
+                      </div>
+                    </div>
+
+                    <p className="text-[10px] mt-2 text-slate-400 italic">Used in final price calculation instantly after save.</p>
+                  </div>
+                </div>
+
+                <div className="bg-blue-50 dark:bg-[#0f6df0]/5 border border-blue-100 dark:border-[#0f6df0]/20 rounded-xl p-4">
+                  <p className="text-xs text-slate-600 dark:text-slate-300">
+                    <span className="font-bold">Formula Preview:</span>{' '}
+                    Final Price = (5SIM cost x {exchangeRate || '?'}) + {globalMarkup || '?'}
+                    {' -> '}
+                    <span className="font-bold text-slate-900 dark:text-slate-100">{previewPrice ? `N${previewPrice}` : 'N?'}</span>
+                  </p>
+                </div>
+              </div>
+
+              <div className="px-8 py-6 bg-slate-50 dark:bg-slate-800/50 border-t border-slate-200 dark:border-slate-800 flex justify-end gap-3">
+                <button
+                  type="button"
+                  onClick={handleDiscard}
+                  disabled={!hasChanges || saving || loading}
+                  className="px-6 py-2 text-sm font-bold text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  Discard Changes
+                </button>
+
+                <button
+                  type="submit"
+                  disabled={saving || loading || !hasChanges}
+                  className="bg-[#0f6df0] hover:bg-[#0d5ed9] text-white px-8 py-2.5 rounded-lg text-sm font-bold flex items-center gap-2 shadow-lg shadow-[#0f6df0]/20 transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <span className={`material-symbols-outlined text-sm ${saving ? 'animate-spin' : ''}`}>
+                    {saving ? 'refresh' : 'save'}
+                  </span>
+                  {saving ? 'Saving...' : 'Save Settings'}
+                </button>
+              </div>
+            </section>
+          </form>
+
+          <div className="bg-blue-50 dark:bg-[#0f6df0]/5 border border-blue-100 dark:border-[#0f6df0]/20 rounded-xl p-6 flex gap-4">
+            <span className="material-symbols-outlined text-[#0f6df0]">info</span>
+            <div>
+              <h5 className="text-sm font-bold text-slate-900 dark:text-slate-100">Audit Notice</h5>
+              <p className="text-sm text-slate-600 dark:text-slate-400 mt-1">
+                Changing these settings will immediately affect all pending and future transactions. Every update is logged in the system for security and auditing purposes.
+              </p>
             </div>
-            <p className="font-mono text-xs text-slate-400 mb-2">
-              Final Price = (5SIM cost × <span className="text-indigo-400">{exchangeRate || '?'}</span>) + ₦<span className="text-emerald-400">{globalMarkup || '?'}</span>
-            </p>
-            <p className="text-xs text-slate-500">
-              Example: 5SIM cost = 5 RUB →{' '}
-              (5 × {exchangeRate || '?'}) + {globalMarkup || '?'} ={' '}
-              <span className="text-white font-semibold">{previewPrice ? `₦${previewPrice}` : '₦?'}</span>
-            </p>
           </div>
-
-          <button
-            type="submit"
-            disabled={saving}
-            className="w-full py-3 bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 text-white rounded-xl font-semibold text-sm disabled:opacity-50 transition-all shadow-lg shadow-indigo-500/20"
-          >
-            {saving ? (
-              <span className="flex items-center justify-center gap-2">
-                <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
-                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
-                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
-                </svg>
-                Saving...
-              </span>
-            ) : 'Save Settings'}
-          </button>
-        </form>
+        </div>
       </div>
     </div>
   );

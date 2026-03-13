@@ -17,12 +17,13 @@ class DatabaseSeeder extends Seeder
     {
         $this->call([
             AdminUserSeeder::class,
-            ServiceSeeder::class,
-            CountrySeeder::class,
+            // ServiceSeeder::class,
+            // CountrySeeder::class,
         ]);
 
         // Seed default global settings
-        \App\Models\Setting::set('global_markup', 100);
-        \App\Models\Setting::set('exchange_rate', 18);
+        \App\Models\Setting::set('global_markup_fixed', 150);
+        \App\Models\Setting::set('global_markup_type', 'fixed');
+        \App\Models\Setting::set('exchange_rate_usd_ngn', 1600.0);
     }
 }

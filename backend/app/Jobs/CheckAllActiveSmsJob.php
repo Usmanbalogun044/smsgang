@@ -2,13 +2,14 @@
 
 namespace App\Jobs;
 
+use App\Enums\ActivationStatus;
 use App\Models\Activation;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
-use App\Enums\ActivationStatus;
+use Illuminate\Support\Facades\Log;
 
 class CheckAllActiveSmsJob implements ShouldQueue
 {
@@ -19,7 +20,7 @@ class CheckAllActiveSmsJob implements ShouldQueue
     public function handle(): void
     {
         // Find all activations that are currently active (waiting for SMS)
-        $activations = Activation::where('status', ActivationStatus::Active)
+        $activations = Activation::where('status', ActivationStatus::WaitingSms)
             ->where('expires_at', '>', now())
             ->get();
 

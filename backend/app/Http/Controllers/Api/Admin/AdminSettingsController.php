@@ -15,7 +15,7 @@ class AdminSettingsController extends Controller
         return response()->json([
             'global_markup' => (float) Setting::get('global_markup_fixed', 150),
             'global_markup_type' => Setting::get('global_markup_type', 'fixed'),
-            'exchange_rate'  => (float) Setting::get('exchange_rate_rub_ngn', 18),
+            'exchange_rate'  => (float) Setting::get('exchange_rate_usd_ngn', 1600),
         ]);
     }
 
@@ -29,7 +29,7 @@ class AdminSettingsController extends Controller
 
         Setting::set('global_markup_fixed', $validated['global_markup']);
         Setting::set('global_markup_type', $validated['global_markup_type']);
-        Setting::set('exchange_rate_rub_ngn', $validated['exchange_rate']);
+        Setting::set('exchange_rate_usd_ngn', $validated['exchange_rate']);
 
         Log::channel('activity')->info('Admin updated global settings', $validated);
 

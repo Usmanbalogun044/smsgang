@@ -44,6 +44,7 @@ export default function ActivationsPage() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [paymentBanner, setPaymentBanner] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
   const { user, loading: authLoading } = useAuthStore();
   const router = useRouter();
 
@@ -83,12 +84,19 @@ export default function ActivationsPage() {
 
   return (
     <div className="flex h-screen overflow-hidden bg-[#f5f7f8]">
-      <DashboardSidebar />
+      <DashboardSidebar mobileOpen={sidebarOpen} setMobileOpen={setSidebarOpen} />
 
       <div className="flex-1 flex flex-col overflow-hidden min-w-0">
         {/* Top Navigation Header */}
-        <header className="flex items-center justify-between whitespace-nowrap border-b border-slate-200 bg-white px-6 py-3 flex-shrink-0">
+        <header className="flex items-center justify-between whitespace-nowrap border-b border-slate-200 bg-white px-4 md:px-6 py-3 flex-shrink-0">
           <div className="flex items-center gap-8">
+            <button
+              className="md:hidden p-2 -ml-2 text-slate-500 hover:bg-slate-100 rounded-lg"
+              onClick={() => setSidebarOpen(true)}
+              aria-label="Open menu"
+            >
+              <span className="material-symbols-outlined">menu</span>
+            </button>
             <div className="flex items-center gap-4 text-[#0f6df0]">
               <div className="size-8 bg-[#0f6df0]/10 rounded-lg flex items-center justify-center">
                 <span className="material-symbols-outlined text-[#0f6df0] text-2xl">sms</span>

@@ -11,6 +11,7 @@ export default function RegisterPage() {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [passwordConfirmation, setPasswordConfirmation] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const setAuth = useAuthStore((s) => s.setAuth);
@@ -20,7 +21,12 @@ export default function RegisterPage() {
     e.preventDefault();
     setLoading(true);
     try {
-      const { data } = await api.post('/register', { name, email, password });
+      const { data } = await api.post('/register', { 
+        name, 
+        email, 
+        password,
+        password_confirmation: passwordConfirmation 
+      });
       setAuth(data.user, data.token);
       toast.success('Account created!');
       router.push('/activations');
@@ -157,6 +163,23 @@ export default function RegisterPage() {
                 </button>
               </div>
               <p className="text-xs text-slate-400 mt-1.5">Use 8+ characters with a mix of letters &amp; numbers</p>
+            </div>
+
+            <div>
+              <label className="block text-sm font-semibold text-slate-700 mb-1.5">Confirm Password</label>
+              <div className="flex items-stretch rounded-lg border border-slate-300 bg-white focus-within:border-[#0f6df0] focus-within:ring-2 focus-within:ring-[#0f6df0]/20 transition-all">
+                <div className="flex items-center pl-3 text-slate-400">
+                  <span className="material-symbols-outlined text-xl">lock_reset</span>
+                </div>
+                <input
+                  type={showPassword ? 'text' : 'password'}
+                  value={passwordConfirmation}
+                  onChange={(e) => setPasswordConfirmation(e.target.value)}
+                  required
+                  placeholder="Repeat your password"
+                  className="flex-1 px-3 py-2.5 bg-transparent border-none outline-none text-sm text-slate-900 placeholder:text-slate-400"
+                />
+              </div>
             </div>
 
             <button

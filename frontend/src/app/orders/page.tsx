@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import api from '@/lib/api';
 import type { Order, PaginatedResponse } from '@/lib/types';
@@ -22,6 +23,7 @@ export default function OrdersPage() {
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
+  const [sidebarOpen, setSidebarOpen] = useState(false);
   const { user, loading: authLoading } = useAuthStore();
   const router = useRouter();
 
@@ -47,17 +49,24 @@ export default function OrdersPage() {
 
   return (
     <div className="flex h-screen overflow-hidden bg-[#f5f7f8]">
-      <DashboardSidebar />
+      <DashboardSidebar mobileOpen={sidebarOpen} setMobileOpen={setSidebarOpen} />
 
       <main className="flex-1 flex flex-col overflow-hidden">
         {/* Header */}
-        <header className="h-16 border-b border-slate-200 bg-white flex items-center justify-between px-8 flex-shrink-0">
+        <header className="h-16 border-b border-slate-200 bg-white flex items-center justify-between px-4 md:px-8 flex-shrink-0">
           <div className="flex items-center gap-2">
+            <button
+              className="md:hidden mr-1 p-2 -ml-2 text-slate-500 hover:bg-slate-100 rounded-lg"
+              onClick={() => setSidebarOpen(true)}
+              aria-label="Open menu"
+            >
+              <span className="material-symbols-outlined">menu</span>
+            </button>
             <span className="material-symbols-outlined text-[#0f6df0]">history</span>
             <h2 className="text-slate-900 text-lg font-bold tracking-tight">Order History</h2>
           </div>
           <div className="flex items-center gap-4">
-            <div className="relative max-w-xs">
+            <div className="relative max-w-xs hidden sm:block">
               <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-lg">search</span>
               <input
                 className="w-64 pl-10 pr-4 py-2 bg-slate-100 border-none rounded-lg text-sm focus:ring-2 focus:ring-[#0f6df0] outline-none placeholder:text-slate-500"
@@ -67,7 +76,7 @@ export default function OrdersPage() {
                 onChange={(e) => setSearch(e.target.value)}
               />
             </div>
-            <button className="size-10 flex items-center justify-center bg-slate-100 rounded-lg text-slate-600 hover:text-[#0f6df0] transition-colors">
+            <button className="size-10 hidden md:flex items-center justify-center bg-slate-100 rounded-lg text-slate-600 hover:text-[#0f6df0] transition-colors">
               <span className="material-symbols-outlined">notifications</span>
             </button>
             <div className="bg-[#0f6df0]/10 text-[#0f6df0] border border-[#0f6df0]/20 rounded-full size-10 flex items-center justify-center font-bold text-sm">
@@ -149,9 +158,9 @@ export default function OrdersPage() {
                                   Pay Now
                                 </a>
                               ) : (
-                                <button className="text-[#0f6df0] text-sm font-bold hover:underline">
+                                <Link href={`/orders/${order.id}`} className="text-[#0f6df0] text-sm font-bold hover:underline">
                                   View Details
-                                </button>
+                                </Link>
                               )}
                             </td>
                           </tr>

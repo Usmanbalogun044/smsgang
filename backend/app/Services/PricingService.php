@@ -16,18 +16,18 @@ class PricingService
     /**
      * Calculate final price in NGN with volatility protection.
      */
-    public function calculateFinalPrice(float $providerPriceRub, MarkupType $markupType, float $markupValue): float
+    public function calculateFinalPrice(float $providerPriceUsd, MarkupType $markupType, float $markupValue): float
     {
         // 1. Fetch settings from DB with optimized defaults
         $globalMarkup = (float) Setting::get('global_markup_fixed', 150);
         $globalMarkupType = Setting::get('global_markup_type', 'fixed'); // 'percentage' or 'fixed'
-        $exchangeRate = (float) Setting::get('exchange_rate_rub_ngn', 18.0);
+        $exchangeRate = (float) Setting::get('exchange_rate_usd_ngn', 1600.0);
         
-        // Safety Buffer: Add 5% to the exchange rate to cover bank fees / RUB volatility
+        // Safety Buffer: Add 5% to the exchange rate to cover bank fees / USD volatility
         $safetyExchangeRate = $exchangeRate * 1.05;
 
-        // 2. Convert provider price (RUB) to NGN using safety rate
-        $baseNgn = $providerPriceRub * $safetyExchangeRate;
+        // 2. Convert provider price (USD) to NGN using safety rate
+        $baseNgn = $providerPriceUsd * $safetyExchangeRate;
 
         // 3. Add global markup (Base profit)
         if ($globalMarkupType === 'percentage') {
