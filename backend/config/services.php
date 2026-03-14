@@ -50,4 +50,16 @@ return [
         'chat_id' => env('TELEGRAM_CHAT_ID'),
     ],
 
+    'currency_api' => [
+        'base_url' => env('CURRENCY_API_BASE_URL', env('RAPIDAPI_CURRENCY_BASE_URL', '')),
+        'latest_path' => env('CURRENCY_API_LATEST_PATH', '/latest'),
+        'convert_path' => env('CURRENCY_API_CONVERT_PATH', '/convert'),
+        'api_key' => env('CURRENCY_API_KEY', env('RAPIDAPI_CURRENCY_API_KEY', env('RAPIDAPI_KEY', ''))),
+        'host' => env('CURRENCY_API_HOST', env('RAPIDAPI_CURRENCY_API_HOST', 'currency-conversion-and-exchange-rates.p.rapidapi.com')),
+        'from' => env('CURRENCY_API_FROM', 'USD'),
+        'to' => env('CURRENCY_API_TO', 'NGN'),
+        'amount' => env('CURRENCY_API_AMOUNT', 1),
+        'timeout' => env('CURRENCY_API_TIMEOUT', 15),
+    ],
+
 ];

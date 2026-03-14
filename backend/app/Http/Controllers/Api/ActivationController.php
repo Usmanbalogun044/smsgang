@@ -10,11 +10,13 @@ use App\Models\Activation;
 use App\Models\Country;
 use App\Models\Order;
 use App\Models\Service;
+use App\Models\Transaction;
 use App\Services\ActivationService;
 use App\Services\LendoverifyService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Throwable;
 
@@ -71,7 +73,22 @@ class ActivationController extends Controller
             ? strtolower(trim($paymentStatusRaw))
             : null;
 
-        if (! in_array($paymentStatus, ['paid', 'success', 'successful', 'completed'], true)) {
+        $successStatuses = ['paid', 'success', 'successful', 'completed'];
+        $failedStatuses = ['failed', 'cancelled', 'canceled', 'declined', 'abandoned'];
+
+        if (in_array($paymentStatus, $failedStatuses, true)) {
+            $this->logTransaction($order, $data, 'failed', $request);
+            $order->update(['status' => 'failed']);
+
+            return response()->json([
+                'message' => 'Payment failed.',
+                'code' => 'PAYMENT_FAILED',
+                'payment_status' => $paymentStatusRaw,
+            ], 422);
+        }
+
+        if (! in_array($paymentStatus, $successStatuses, true)) {
+            $this->logTransaction($order, $data, 'pending', $request);
             return response()->json([
                 'message' => 'Payment not confirmed yet.',
                 'payment_status' => $paymentStatusRaw,
@@ -98,7 +115,8 @@ class ActivationController extends Controller
         } catch (Throwable $e) {
             $message = strtolower($e->getMessage());
 
-            if (str_contains($message, 'not enough user balance')) {
+            if (str_contains($message, 'not enough user balance') || str_contains($message, 'insufficient')) {
+                $this->logTransaction($order, $data, 'payment_received_issue', $request);
                 Log::channel('activity')->error('Provider balance insufficient after successful payment', [
                     'order_id' => $order->id,
                     'user_id' => $request->user()->id,
@@ -113,6 +131,7 @@ class ActivationController extends Controller
                 ], 503);
             }
 
+            $this->logTransaction($order, $data, 'payment_received_issue', $request);
             Log::channel('activity')->error('Payment verified but activation provisioning failed', [
                 'order_id' => $order->id,
                 'user_id' => $request->user()->id,
@@ -136,6 +155,190 @@ class ActivationController extends Controller
             'message' => 'Payment verified. Number assigned.',
             'activation' => new ActivationResource($activation->load(['service', 'country'])),
         ]);
+    }
+
+    public function verifyPaymentByReference(Request $request, string $reference): JsonResponse
+    {
+        $reference = trim((string) $reference);
+        if ($reference === '') {
+            return response()->json([
+                'message' => 'Reference is required.',
+                'errors'  => ['reference' => ['The reference field is required.']],
+            ], 422);
+        }
+
+        // Hit gateway once to resolve the reference.
+        $result = $this->lendoverify->verifyReference($reference);
+        $data   = $result['data'] ?? $result;
+
+        $paymentReference = $data['paymentReference'] ?? $data['reference'] ?? null;
+        if (! is_string($paymentReference) || trim($paymentReference) === '') {
+            return response()->json([
+                'message' => 'Payment reference not found in gateway response.',
+            ], 422);
+        }
+
+        // Wrap in a DB transaction with a row-level lock so concurrent verify calls
+        // cannot both reach processAfterPayment simultaneously (prevents buy-multiple exploit).
+        return DB::transaction(function () use ($request, $data, $paymentReference) {
+            $order = Order::lockForUpdate()
+                ->where('payment_reference', $paymentReference)
+                ->where('user_id', $request->user()->id)
+                ->first();
+
+            if (! $order) {
+                return response()->json([
+                    'message' => 'Order not found for this payment reference.',
+                ], 404);
+            }
+
+            // Idempotency: activation already exists — return it immediately.
+            if ($order->activation) {
+                $this->logTransaction($order, $data, 'paid', $request);
+                return response()->json([
+                    'message'    => 'Payment already verified. Number assigned.',
+                    'activation' => new ActivationResource($order->activation->load(['service', 'country'])),
+                ]);
+            }
+
+            // Check gateway payment status.
+            $paymentStatusRaw = $data['paymentStatus'] ?? $data['status'] ?? null;
+            $paymentStatus    = is_string($paymentStatusRaw) ? strtolower(trim($paymentStatusRaw)) : null;
+
+            $successStatuses = ['paid', 'success', 'successful', 'completed'];
+            $failedStatuses = ['failed', 'cancelled', 'canceled', 'declined', 'abandoned'];
+
+            if (in_array($paymentStatus, $failedStatuses, true)) {
+                $this->logTransaction($order, $data, 'failed', $request);
+                if ($order->status->value === 'pending') {
+                    $order->update(['status' => 'failed']);
+                }
+
+                return response()->json([
+                    'message'        => 'Payment failed.',
+                    'code'           => 'PAYMENT_FAILED',
+                    'payment_status' => $paymentStatusRaw,
+                ], 422);
+            }
+
+            if (! in_array($paymentStatus, $successStatuses, true)) {
+                $this->logTransaction($order, $data, 'pending', $request);
+                return response()->json([
+                    'message'        => 'Payment not confirmed yet.',
+                    'payment_status' => $paymentStatusRaw,
+                ], 402);
+            }
+
+            // Amount sanity check.
+            $amountPaid = $data['amountPaid'] ?? $data['amount'] ?? 0;
+            if (is_numeric($amountPaid) && (float) $amountPaid > 10000) {
+                $amountPaid = (float) $amountPaid / 100;
+            }
+            if (abs((float) $amountPaid - (float) $order->price) > 1) {
+                return response()->json(['message' => 'Payment amount mismatch.'], 422);
+            }
+
+            // Guard: order already moved past 'pending' — do NOT provision again.
+            // This stops a reload-based exploit from spawning multiple activations on one payment.
+            if ($order->status->value !== 'pending') {
+                return response()->json([
+                    'message'  => 'Payment received, but order is currently being processed. Please contact support if this persists.',
+                    'code'     => 'ORDER_ALREADY_PROCESSED',
+                    'order_id' => $order->id,
+                    'status'   => $order->status->value,
+                ], 422);
+            }
+
+            // Log the confirmed transaction.
+            $this->logTransaction($order, $data, 'paid', $request);
+
+            $order->update(['status' => 'paid']);
+
+            try {
+                $activation = $this->activationService->processAfterPayment($order);
+            } catch (Throwable $e) {
+                $msg = strtolower($e->getMessage());
+
+                if (str_contains($msg, 'not enough user balance') || str_contains($msg, 'insufficient')) {
+                    $this->logTransaction($order, $data, 'payment_received_issue', $request);
+                    Log::channel('activity')->error('Provider balance insufficient after payment verified', [
+                        'order_id' => $order->id,
+                        'user_id'  => $request->user()->id,
+                        'provider' => '5sim',
+                        'error'    => $e->getMessage(),
+                    ]);
+                    return response()->json([
+                        'message'  => 'Payment received, but number allocation is temporarily unavailable. Please contact support.',
+                        'code'     => 'PROVIDER_INSUFFICIENT_BALANCE',
+                        'order_id' => $order->id,
+                    ], 503);
+                }
+
+                $this->logTransaction($order, $data, 'payment_received_issue', $request);
+                Log::channel('activity')->error('Payment verified but provisioning failed', [
+                    'order_id' => $order->id,
+                    'user_id'  => $request->user()->id,
+                    'error'    => $e->getMessage(),
+                ]);
+                return response()->json([
+                    'message'  => 'Payment received, but activation provisioning failed. Please contact support.',
+                    'code'     => 'ACTIVATION_PROVISIONING_FAILED',
+                    'order_id' => $order->id,
+                ], 503);
+            }
+
+            Log::channel('activity')->info('Payment verified via reference, number assigned', [
+                'order_id'      => $order->id,
+                'activation_id' => $activation->id,
+                'user_id'       => $request->user()->id,
+            ]);
+
+            return response()->json([
+                'message'    => 'Payment verified. Number assigned.',
+                'activation' => new ActivationResource($activation->load(['service', 'country'])),
+            ]);
+        });
+    }
+
+    /**
+     * Log or update a payment transaction record for audit and admin tracking.
+     * Never downgrades a paid transaction back to a pending state.
+     */
+    private function logTransaction(Order $order, array $gatewayData, string $status, Request $request): void
+    {
+        try {
+            $existing = Transaction::where('reference', $order->payment_reference)->first();
+
+            $attrs = [
+                'user_id'           => $order->user_id,
+                'order_id'          => $order->id,
+                'gateway'           => 'lendoverify',
+                'gateway_reference' => $gatewayData['paymentReference'] ?? $gatewayData['reference'] ?? null,
+                'amount'            => (float) $order->price,
+                'currency'          => 'NGN',
+                'status'            => $status,
+                'description'       => "SMS Activation – order #{$order->id}",
+                'ip_address'        => $request->ip(),
+                'user_agent'        => substr((string) $request->userAgent(), 0, 255),
+                'gateway_response'  => $gatewayData,
+                'verified_at'       => $status === 'paid' ? now() : ($existing?->verified_at),
+            ];
+
+            if ($existing) {
+                // Never downgrade a settled/received transaction state back to pending/failed.
+                if (in_array($existing->status, ['paid', 'payment_received_issue'], true) && in_array($status, ['pending', 'failed'], true)) {
+                    return;
+                }
+                $existing->update($attrs);
+            } else {
+                Transaction::create(array_merge(['reference' => $order->payment_reference], $attrs));
+            }
+        } catch (Throwable $e) {
+            Log::warning('Failed to log transaction', [
+                'order_id' => $order->id,
+                'error'    => $e->getMessage(),
+            ]);
+        }
     }
 
     public function index(Request $request): AnonymousResourceCollection

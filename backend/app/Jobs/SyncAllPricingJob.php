@@ -6,6 +6,7 @@ use App\Enums\MarkupType;
 use App\Models\Country;
 use App\Models\Service;
 use App\Models\ServicePrice;
+use App\Services\ExchangeRateService;
 use App\Services\PricingService;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -24,12 +25,15 @@ class SyncAllPricingJob implements ShouldQueue
 
     public function __construct() {}
 
-    public function handle(PricingService $pricingService): void
+    public function handle(PricingService $pricingService, ExchangeRateService $exchangeRateService): void
     {
         Log::info('Background Sync: Starting comprehensive sync...');
         Cache::put('sync_in_progress', true, 1800);
 
         try {
+            // Keep USD->NGN fresh before pulling 5SIM prices.
+            $exchangeRateService->syncUsdToNgn();
+
             $baseUrl = rtrim(config('services.fivesim.base_url', 'https://5sim.net/v1'), '/');
             $apiKey = config('services.fivesim.api_key');
 

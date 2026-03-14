@@ -120,7 +120,9 @@ class ActivationService
             'status'            => OrderStatus::Pending,
         ]);
 
-        $callbackUrl = rtrim(config('app.frontend_url', config('app.url')), '/') . '/activations/' . $order->id . '/verify';
+        // Send the clean base URL — Lendoverify will append ?paymentReference=... itself.
+        // Do NOT add our own query params here or we'll get a double-? malformed URL.
+        $callbackUrl = rtrim((string) config('app.verify_payment_url', config('app.frontend_url', config('app.url')) . '/verify-payment'), '/');
 
         $payment = $this->lendoverify->initializeTransaction([
             'amount'             => (int) round($finalPrice * 100),

@@ -54,6 +54,11 @@ return [
 
     'url' => env('APP_URL', 'http://localhost'),
 
+    // Public frontend/admin origins used for redirect callbacks and links.
+    'frontend_url' => env('FRONTEND_URL', env('APP_URL', 'http://localhost')),
+    'admin_url' => env('ADMIN_URL', env('APP_URL', 'http://localhost')),
+    'verify_payment_url' => env('VERIFY_PAYMENT_URL', env('FRONTEND_URL', env('APP_URL', 'http://localhost')) . '/verify-payment'),
+
     /*
     |--------------------------------------------------------------------------
     | Application Timezone

@@ -103,3 +103,24 @@ export interface AdminSettings {
   global_markup_type: 'percentage' | 'fixed';
   exchange_rate: number;
 }
+
+export type TransactionStatus =
+  | 'pending'
+  | 'paid'
+  | 'failed'
+  | 'payment_received_issue';
+
+export interface Transaction {
+  id: number;
+  reference: string;
+  gateway: string;
+  gateway_reference: string | null;
+  amount: number;
+  currency: string;
+  status: TransactionStatus | string;
+  description: string | null;
+  verified_at: string | null;
+  order_id: number | null;
+  user?: User;
+  created_at: string;
+}

@@ -24,6 +24,8 @@ class LendoverifyService
      */
     public function initializeTransaction(array $data): array
     {
+        $redirectUrl = $data['redirectUrl'] ?? config('app.verify_payment_url', config('app.url'));
+
         try {
             $response = Http::withHeaders([
                 'api-key' => $this->apiKey,
@@ -34,7 +36,7 @@ class LendoverifyService
                 'amount' => $data['amount'],
                 'paymentReference' => $data['paymentReference'] ?? 'SMS_' . uniqid(),
                 'paymentDescription' => $data['paymentDescription'] ?? 'SMS Activation',
-                'redirectUrl' => $data['redirectUrl'] ?? config('app.url'),
+                'redirectUrl' => $redirectUrl,
             ]);
 
             if ($response->successful()) {

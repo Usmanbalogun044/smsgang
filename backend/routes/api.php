@@ -7,12 +7,14 @@ use App\Http\Controllers\Api\Admin\AdminOrderController;
 use App\Http\Controllers\Api\Admin\AdminPricingController;
 use App\Http\Controllers\Api\Admin\AdminServiceController;
 use App\Http\Controllers\Api\Admin\AdminSettingsController;
+use App\Http\Controllers\Api\Admin\AdminTransactionController;
 use App\Http\Controllers\Api\Admin\AdminUserController;
 use App\Http\Controllers\Api\Admin\WithdrawalController;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\LendoverifyWebhookController;
 use App\Http\Controllers\Api\OrderController;
 use App\Http\Controllers\Api\ServiceController;
+use App\Http\Controllers\Api\TransactionController;
 use Illuminate\Support\Facades\Route;
 
 // Public auth routes
@@ -43,6 +45,7 @@ Route::middleware(['auth:sanctum', 'active', 'throttle:api'])->group(function ()
     // Activations
     Route::post('/activations/buy', [ActivationController::class, 'buy'])
         ->middleware('throttle:buy');
+    Route::get('/activations/verify/{reference}', [ActivationController::class, 'verifyPaymentByReference']);
     Route::post('/activations/{order}/verify-payment', [ActivationController::class, 'verifyPayment']);
     Route::get('/activations', [ActivationController::class, 'index']);
     Route::get('/activations/{activation}', [ActivationController::class, 'show']);
@@ -53,6 +56,9 @@ Route::middleware(['auth:sanctum', 'active', 'throttle:api'])->group(function ()
     // Orders
     Route::get('/orders', [OrderController::class, 'index']);
     Route::get('/orders/{order}', [OrderController::class, 'show']);
+
+    // Transactions
+    Route::get('/transactions', [TransactionController::class, 'index']);
 });
 
 // Admin routes
@@ -94,4 +100,8 @@ Route::middleware(['auth:sanctum', 'active', 'admin', 'throttle:api'])
         Route::get('/withdrawals', [WithdrawalController::class, 'index']);
         Route::post('/withdrawals', [WithdrawalController::class, 'store']);
         Route::delete('/withdrawals/{withdrawal}', [WithdrawalController::class, 'destroy']);
+
+        // Transactions
+        Route::get('/transactions', [AdminTransactionController::class, 'index']);
+        Route::get('/transactions/{transaction}', [AdminTransactionController::class, 'show']);
     });

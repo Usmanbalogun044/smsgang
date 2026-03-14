@@ -9,6 +9,7 @@ const navItems = [
   { href: '/services', label: 'Services', icon: 'inventory_2' },
   { href: '/activations', label: 'Activations', icon: 'bolt' },
   { href: '/orders', label: 'Orders', icon: 'history' },
+  { href: '/transactions', label: 'Transactions', icon: 'payments' },
   { href: '/users', label: 'Users', icon: 'group' },
   { href: '/settings', label: 'Settings', icon: 'settings' },
 ];
