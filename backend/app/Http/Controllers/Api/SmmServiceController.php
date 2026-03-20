@@ -21,17 +21,14 @@ class SmmServiceController extends Controller
             $search = $request->query('search');
             $perPage = (int) $request->query('per_page', 50);
 
-            $query = SmmService::where('is_active', true)
-                ->with(['prices' => function ($q) {
-                    $q->where('is_active', true);
-                }]);
+            // Get global markup settings
+            $globalMarkupValue = (float) \App\Models\Setting::get('smm_global_markup_fixed', 10);
+            $globalMarkupType = \App\Models\Setting::get('smm_global_markup_type', 'percent');
+
+            $query = SmmService::where('is_active', true);
 
             if ($category) {
-                $query->where('category', 'like', "%{$category}%");
-            }
-
-            if ($type) {
-                $query->where('type', $type);
+                $query->where('category', $category);
             }
 
             if ($search) {
@@ -41,32 +38,28 @@ class SmmServiceController extends Controller
             $services = $query->paginate($perPage);
 
             return response()->json([
-                'data' => $services->map(fn ($service) => (
-                    $price = $service->prices->first()
-                ) ? [
-                    'id' => $price->id,
-                    'smm_service_id' => $service->id,
-                    'markup_type' => $price->markup_type,
-                    'markup_value' => (string) $price->markup_value,
-                    'final_price' => (string) $price->final_price,
-                    'is_active' => $price->is_active,
-                    'created_at' => $price->created_at,
-                    'smm_service' => [
+                'data' => $services->getCollection()->map(function ($service) use ($globalMarkupValue, $globalMarkupType) {
+                    $baseRatePerUnit = (float) $service->rate / 1000;
+                    
+                    if ($globalMarkupType === 'percent') {
+                        $finalRatePerUnit = $baseRatePerUnit * (1 + ($globalMarkupValue / 100));
+                    } else {
+                        $finalRatePerUnit = $baseRatePerUnit + ($globalMarkupValue / 1000);
+                    }
+
+                    return [
                         'id' => $service->id,
-                        'crestpanel_service_id' => $service->crestpanel_service_id,
                         'name' => $service->name,
                         'category' => $service->category,
                         'type' => $service->type,
-                        'rate' => (float) $service->rate,
-                        'rate_per_unit' => (float) $service->rate / 1000,
+                        'rate_per_1000' => (float) $service->rate,
+                        'rate_per_unit' => round($finalRatePerUnit, 4),
                         'min' => $service->min,
                         'max' => $service->max,
                         'refill' => $service->refill,
                         'cancel' => $service->cancel,
-                        'is_active' => $service->is_active,
-                        'created_at' => $service->created_at,
-                    ],
-                ] : null)->filter(),
+                    ];
+                }),
                 'meta' => [
                     'total' => $services->total(),
                     'per_page' => $services->perPage(),
@@ -94,7 +87,17 @@ class SmmServiceController extends Controller
                 ], 404);
             }
 
-            $price = $service->getActivePrice();
+            // Get global markup settings
+            $globalMarkupValue = (float) \App\Models\Setting::get('smm_global_markup_fixed', 10);
+            $globalMarkupType = \App\Models\Setting::get('smm_global_markup_type', 'percent');
+
+            $baseRatePerUnit = (float) $service->rate / 1000;
+                    
+            if ($globalMarkupType === 'percent') {
+                $finalRatePerUnit = $baseRatePerUnit * (1 + ($globalMarkupValue / 100));
+            } else {
+                $finalRatePerUnit = $baseRatePerUnit + ($globalMarkupValue / 1000);
+            }
 
             return response()->json([
                 'id' => $service->id,
@@ -102,14 +105,12 @@ class SmmServiceController extends Controller
                 'name' => $service->name,
                 'category' => $service->category,
                 'type' => $service->type,
-                'rate' => (string) $service->rate,
+                'rate_per_1000' => (float) $service->rate,
+                'rate_per_unit' => round($finalRatePerUnit, 4),
                 'min' => $service->min,
                 'max' => $service->max,
                 'refill' => $service->refill,
                 'cancel' => $service->cancel,
-                'markup_type' => $price ? $price->markup_type : null,
-                'markup_value' => $price ? (string) $price->markup_value : null,
-                'final_price_ngn' => $price ? (string) $price->final_price : '0.00',
             ]);
         } catch (\Exception $e) {
             return response()->json([

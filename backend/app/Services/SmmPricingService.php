@@ -32,22 +32,36 @@ class SmmPricingService
         $rateInNgnPer1000 = (float) $service->rate;
         $pricePerUnit = $rateInNgnPer1000 / 1000;
         
-        // Final base cost before markup
+        // Cost of the request before any markup
         $totalCostNgn = $pricePerUnit * $quantity;
         
-        // Apply global markup first (base profit)
-        $basePriceNgn = $totalCostNgn;
-        if ($this->globalMarkupType === 'percent') {
-            $basePriceNgn = $basePriceNgn * (1 + ($this->globalMarkupFixed / 100));
+        // Get global markup from settings
+        $globalMarkupValue = (float) Setting::get('smm_global_markup_fixed', 10); // Default 10%
+        $globalMarkupType = Setting::get('smm_global_markup_type', 'percent'); // Default percent
+
+        $finalPriceNgn = $totalCostNgn;
+
+        if ($globalMarkupType === 'percent') {
+            $finalPriceNgn = $totalCostNgn * (1 + ($globalMarkupValue / 100));
         } else {
-            // If it's fixed, we should apply it per quantity or per order?
-            // Usually, fixed markups are per 1000 or per order. 
-            // Let's assume global markup is per 1000 units to be consistent with panel pricing.
-            $fixedMarkupPerUnit = $this->globalMarkupFixed / 1000;
-            $basePriceNgn += ($fixedMarkupPerUnit * $quantity);
+            // Fixed markup per 1,000 units (scaled to requested quantity)
+            $fixedMarkupPerUnit = $globalMarkupValue / 1000;
+            $finalPriceNgn = $totalCostNgn + ($fixedMarkupPerUnit * $quantity);
         }
-        
-        // Apply individual service markup (likely percentage or per order)
+
+        // Calculate profit
+        $profit = max(0, $finalPriceNgn - $totalCostNgn);
+
+        return [
+            'total_price' => round($finalPriceNgn, 2),
+            'cost_price' => round($totalCostNgn, 2),
+            'profit' => round($profit, 2),
+            'rate_per_unit' => round($finalPriceNgn / $quantity, 4),
+            'quantity' => $quantity,
+            'base_rate_per_1000' => $rateInNgnPer1000,
+            'currency' => 'NGN'
+        ];
+    }
         $markupAmount = $this->applyMarkup($basePriceNgn);
         $finalPriceNgn = $basePriceNgn + $markupAmount;
 

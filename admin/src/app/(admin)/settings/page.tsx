@@ -328,14 +328,14 @@ export default function SettingsPage() {
                         disabled={loading}
                         className="w-full px-4 py-2 border border-slate-200 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-700 text-slate-900 dark:text-white focus:ring-2 focus:ring-[#0f6df0] outline-none"
                       >
-                        <option value="fixed">Fixed (₦)</option>
+                        <option value="fixed">Fixed (₦ per 1,000 units)</option>
                         <option value="percent">Percentage (%)</option>
                       </select>
                     </div>
 
                     <div>
                       <label className="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">
-                        {smmGlobalMarkupType === 'fixed' ? 'Fixed Amount' : 'Percentage'}
+                        {smmGlobalMarkupType === 'fixed' ? 'Fixed Amount (per 1,000 units)' : 'Percentage (%)'}
                       </label>
                       <div className="flex items-center gap-2">
                         <input
@@ -352,12 +352,18 @@ export default function SettingsPage() {
                         </span>
                       </div>
                       <p className="text-xs text-slate-500 dark:text-slate-400 mt-2">
-                        Added to all SMM services on top of CrestPanel rate
+                        Added to all SMM services based on CrestPanel's rate per 1,000 units.
                       </p>
                     </div>
 
                     <div className="bg-blue-50 dark:bg-[#0f6df0]/5 border border-blue-100 dark:border-[#0f6df0]/20 rounded-lg p-3">
                       <p className="text-xs font-semibold text-slate-900 dark:text-slate-100 mb-2">Formula:</p>
+                      <p className="text-sm font-mono text-blue-600 dark:text-blue-400">
+                        {smmGlobalMarkupType === 'fixed' 
+                          ? 'Total = ((Rate + Fixed) / 1000) * Quantity' 
+                          : 'Total = ((Rate * (1 + %)) / 1000) * Quantity'}
+                      </p>
+                    </div>
                       <p className="text-xs text-slate-600 dark:text-slate-300">
                         Final = CrestPanel Rate
                         {smmGlobalMarkupType === 'fixed' ? ` + ${smmGlobalMarkupFixed || '0'} ₦` : ` × (1 + ${smmGlobalMarkupFixed || '0'}%)`}
@@ -400,13 +406,13 @@ export default function SettingsPage() {
                         <span className="text-slate-400 bg-slate-200 dark:bg-slate-600 px-2 py-0.5 rounded">#{idx + 1}</span>
                       </div>
                       <p className="text-slate-600 dark:text-slate-300">
-                        <span className="font-semibold">CrestPanel Rate:</span> {formatMoney(service.smm_service?.rate || 0)}/unit
+                        <span className="font-semibold">CrestPanel Rate:</span> {formatMoney(service.smm_service?.rate || 0)} per 1,000
                       </p>
                       <p className="text-slate-600 dark:text-slate-300">
                         <span className="font-semibold">Your Markup:</span> {service.markup_type === 'Fixed' ? formatMoney(service.markup_value) : `${service.markup_value}%`}
                       </p>
                       <p className="text-green-600 dark:text-green-400 font-bold">
-                        Customer Pays: {formatMoney(service.final_price)}/unit
+                        Customer Pays: {formatMoney(service.final_price * 1000)} per 1,000
                       </p>
                       <p className="text-slate-400">Qty: {service.smm_service?.min} - {service.smm_service?.max}</p>
                     </div>
@@ -419,4 +425,4 @@ export default function SettingsPage() {
       </div>
     </div>
   );
-}
+    }
