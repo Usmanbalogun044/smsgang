@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import api from '@/lib/api';
 import Pagination from '@/components/Pagination';
 import toast from 'react-hot-toast';
+import useRealtimeRefresh from '@/hooks/useRealtimeRefresh';
 import type { PaginatedResponse, Transaction } from '@/lib/types';
 
 const statusStyles: Record<string, string> = {
@@ -27,8 +28,10 @@ export default function TransactionsPage() {
   const [search, setSearch] = useState('');
   const [status, setStatus] = useState('all');
 
-  const fetchTransactions = (page = 1, statusFilter = status) => {
-    setLoading(true);
+  const fetchTransactions = (page = 1, statusFilter = status, silent = false) => {
+    if (!silent) {
+      setLoading(true);
+    }
 
     const params = new URLSearchParams({ page: String(page) });
     if (statusFilter !== 'all') params.set('status', statusFilter);
@@ -39,14 +42,24 @@ export default function TransactionsPage() {
         setTransactions(data.data);
         setMeta(data.meta);
       })
-      .catch(() => toast.error('Failed to load transactions'))
-      .finally(() => setLoading(false));
+      .catch(() => {
+        if (!silent) {
+          toast.error('Failed to load transactions');
+        }
+      })
+      .finally(() => {
+        if (!silent) {
+          setLoading(false);
+        }
+      });
   };
 
   useEffect(() => {
     fetchTransactions(1, status);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [status]);
+
+  useRealtimeRefresh(() => fetchTransactions(meta.current_page || 1, status, true));
 
   const filteredTransactions = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -188,7 +201,7 @@ export default function TransactionsPage() {
         </div>
 
         <div className="border-t border-slate-100 px-4 py-3 dark:border-slate-800">
-          <Pagination currentPage={meta.current_page} lastPage={meta.last_page} onPageChange={fetchTransactions} />
+          <Pagination currentPage={meta.current_page} lastPage={meta.last_page} onPageChange={(page) => fetchTransactions(page, status, false)} />
         </div>
       </div>
     </div>

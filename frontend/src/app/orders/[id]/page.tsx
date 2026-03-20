@@ -34,6 +34,16 @@ export default function UserOrderDetailsPage() {
         router.push('/orders');
       })
       .finally(() => setLoading(false));
+
+    // Auto-refresh order every 2 seconds for real-time SMS delivery
+    const interval = setInterval(() => {
+      api
+        .get(`/orders/${params.id}`)
+        .then(({ data }) => setOrder(data.data ?? data))
+        .catch(() => {}); // silent
+    }, 2000);
+
+    return () => clearInterval(interval);
   }, [params.id, router]);
 
   const copyPhoneNumber = async () => {

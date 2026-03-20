@@ -1,62 +1,100 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import api from '@/lib/api';
 import toast from 'react-hot-toast';
+import useRealtimeRefresh from '@/hooks/useRealtimeRefresh';
 
-type SettingsSnapshot = {
-  global_markup: string;
-  exchange_rate: string;
-};
+interface SmmService {
+  id: number;
+  smm_service: {
+    name: string;
+    rate: number;
+    min: number;
+    max: number;
+  };
+  markup_type: string;
+  markup_value: number;
+  final_price: number;
+}
+
+interface ServicePrice {
+  id: number;
+  service: {
+    name: string;
+  };
+  final_price: number;
+}
 
 export default function SettingsPage() {
+  // Activation services
   const [globalMarkup, setGlobalMarkup] = useState('');
   const [exchangeRate, setExchangeRate] = useState('');
-  const [initial, setInitial] = useState<SettingsSnapshot | null>(null);
+
+  // SMM services
+  const [smmGlobalMarkupFixed, setSmmGlobalMarkupFixed] = useState('');
+  const [smmGlobalMarkupType, setSmmGlobalMarkupType] = useState('fixed');
+
+  const [initial, setInitial] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [tab, setTab] = useState<'activation' | 'smm'>('activation');
+
+  const [smmServices, setSmmServices] = useState<SmmService[]>([]);
+  const [activationServices, setActivationServices] = useState<ServicePrice[]>([]);
 
   useEffect(() => {
-    api
-      .get('/admin/settings')
-      .then(({ data }) => {
+    Promise.all([
+      api.get('/admin/settings'),
+      api.get('/admin/smm/settings'),
+      api.get<{ data: SmmService[] }>('/admin/smm/services?per_page=1000'),
+      api.get<{ data: ServicePrice[] }>('/admin/services?per_page=1000'),
+    ])
+      .then(([activRes, smmRes, smmServRes, activServRes]) => {
         const snapshot = {
-          global_markup: String(data.global_markup ?? ''),
-          exchange_rate: String(data.exchange_rate ?? ''),
+          global_markup: String(activRes.data.global_markup ?? ''),
+          exchange_rate: String(activRes.data.exchange_rate ?? ''),
+          smm_global_markup_fixed: String(smmRes.data.global_markup_fixed ?? '500'),
+          smm_global_markup_type: smmRes.data.global_markup_type ?? 'fixed',
         };
 
         setGlobalMarkup(snapshot.global_markup);
         setExchangeRate(snapshot.exchange_rate);
+        setSmmGlobalMarkupFixed(snapshot.smm_global_markup_fixed);
+        setSmmGlobalMarkupType(snapshot.smm_global_markup_type);
         setInitial(snapshot);
+        setSmmServices(smmServRes.data.data);
+        setActivationServices(activServRes.data.data);
       })
       .catch(() => toast.error('Failed to load settings'))
       .finally(() => setLoading(false));
   }, []);
 
-  const hasChanges = useMemo(() => {
-    if (!initial) return false;
+  useRealtimeRefresh(
+    useCallback(() => {
+      Promise.all([
+        api.get('/admin/settings'),
+        api.get('/admin/smm/settings'),
+      ]).then(([activRes, smmRes]) => {
+        const snapshot = {
+          global_markup: String(activRes.data.global_markup ?? ''),
+          exchange_rate: String(activRes.data.exchange_rate ?? ''),
+          smm_global_markup_fixed: String(smmRes.data.global_markup_fixed ?? '500'),
+          smm_global_markup_type: smmRes.data.global_markup_type ?? 'fixed',
+        };
+        setInitial(snapshot);
+      });
+    }, []),
+    { enabled: saving === false && loading === false }
+  );
 
-    return (
-      globalMarkup !== initial.global_markup ||
-      exchangeRate !== initial.exchange_rate
-    );
-  }, [globalMarkup, exchangeRate, initial]);
-
-  const handleDiscard = () => {
-    if (!initial) return;
-    setGlobalMarkup(initial.global_markup);
-    setExchangeRate(initial.exchange_rate);
-    toast('Changes discarded', { icon: '↩' });
-  };
-
-  const handleSave = async (e: React.FormEvent) => {
+  const handleSaveActivation = async (e: React.FormEvent) => {
     e.preventDefault();
-
     const markup = Number(globalMarkup);
     const rate = Number(exchangeRate);
 
     if (!Number.isFinite(markup) || markup < 0) {
-      toast.error('Global markup must be a valid non-negative number');
+      toast.error('Markup must be a valid number');
       return;
     }
 
@@ -66,7 +104,6 @@ export default function SettingsPage() {
     }
 
     setSaving(true);
-
     try {
       await api.put('/admin/settings', {
         global_markup: markup,
@@ -76,190 +113,309 @@ export default function SettingsPage() {
       const snapshot = {
         global_markup: String(markup),
         exchange_rate: String(rate),
+        smm_global_markup_fixed: initial?.smm_global_markup_fixed || '500',
+        smm_global_markup_type: initial?.smm_global_markup_type || 'fixed',
       };
-
       setInitial(snapshot);
-      setGlobalMarkup(snapshot.global_markup);
-      setExchangeRate(snapshot.exchange_rate);
-      toast.success('Settings saved successfully');
+      toast.success('Activation services settings saved');
     } catch {
-      toast.error('Failed to save settings');
+      toast.error('Failed to save');
     } finally {
       setSaving(false);
     }
   };
 
-  const previewPrice =
-    exchangeRate && globalMarkup
-      ? (0.1 * Number(exchangeRate) + Number(globalMarkup)).toFixed(2)
-      : null;
+  const handleSaveSmm = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const fixed = Number(smmGlobalMarkupFixed);
+
+    if (!Number.isFinite(fixed) || fixed < 0) {
+      toast.error('Markup must be a valid number');
+      return;
+    }
+
+    setSaving(true);
+    try {
+      await api.put('/admin/smm/settings', {
+        global_markup_fixed: fixed,
+        global_markup_type: smmGlobalMarkupType,
+      });
+
+      const snapshot = {
+        global_markup: initial?.global_markup || '',
+        exchange_rate: initial?.exchange_rate || '',
+        smm_global_markup_fixed: String(fixed),
+        smm_global_markup_type: smmGlobalMarkupType,
+      };
+      setInitial(snapshot);
+      toast.success('SMM services settings saved');
+    } catch {
+      toast.error('Failed to save');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const hasActivationChanges = useMemo(() => {
+    if (!initial) return false;
+    return (
+      globalMarkup !== initial.global_markup ||
+      exchangeRate !== initial.exchange_rate
+    );
+  }, [globalMarkup, exchangeRate, initial]);
+
+  const hasSmmChanges = useMemo(() => {
+    if (!initial) return false;
+    return (
+      smmGlobalMarkupFixed !== initial.smm_global_markup_fixed ||
+      smmGlobalMarkupType !== initial.smm_global_markup_type
+    );
+  }, [smmGlobalMarkupFixed, smmGlobalMarkupType, initial]);
+
+  const formatMoney = (value: number) =>
+    `₦${Number(value).toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
   return (
     <div className="min-h-screen bg-[#f5f7f8] dark:bg-[#101822]">
-      <header className="h-16 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 flex items-center justify-between px-8">
+      <header className="h-16 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 flex items-center px-8">
         <div className="flex items-center gap-2 text-[#0f6df0]">
-          <span className="material-symbols-outlined">settings</span>
-          <h2 className="text-lg font-bold tracking-tight text-slate-900 dark:text-slate-100">Global Settings</h2>
-        </div>
-
-        <div className="flex items-center gap-3">
-          <button className="p-2 text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors relative">
-            <span className="material-symbols-outlined">notifications</span>
-            <span className="absolute top-2 right-2 size-2 bg-red-500 rounded-full border-2 border-white dark:border-slate-900" />
-          </button>
-          <button className="p-2 text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors">
-            <span className="material-symbols-outlined">account_circle</span>
-          </button>
+          <span className="material-symbols-outlined">tune</span>
+          <h2 className="text-lg font-bold text-slate-900 dark:text-slate-100">Service Settings</h2>
         </div>
       </header>
 
       <div className="px-8 py-6">
-        <nav className="flex items-center gap-2 text-sm text-slate-500 dark:text-slate-400 mb-4">
-          <span>Admin</span>
-          <span className="material-symbols-outlined text-xs">chevron_right</span>
-          <span className="text-slate-900 dark:text-slate-100 font-medium">Settings</span>
-        </nav>
-
-        <div>
-          <h3 className="text-3xl font-black text-slate-900 dark:text-slate-100 tracking-tight">Global Settings</h3>
-          <p className="text-slate-500 dark:text-slate-400 mt-1 max-w-2xl">
-            Configure system-wide financial parameters, currency exchange rates, and transaction markups for all regions.
-          </p>
+        <div className="mb-8">
+          <h3 className="text-3xl font-black text-slate-900 dark:text-slate-100">Global Service Settings</h3>
+          <p className="text-slate-500 dark:text-slate-400 mt-1">Configure pricing and markup for all services</p>
         </div>
-      </div>
 
-      <div className="px-8 pb-12 flex-1 overflow-y-auto">
-        <div className="max-w-4xl space-y-8">
-          <form onSubmit={handleSave}>
-            <section className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 overflow-hidden shadow-sm">
-              <div className="p-6 border-b border-slate-100 dark:border-slate-800">
-                <h4 className="text-lg font-bold flex items-center gap-2 text-slate-900 dark:text-slate-100">
-                  <span className="material-symbols-outlined text-[#0f6df0]">payments</span>
-                  Financial Configuration
-                </h4>
-              </div>
+        {/* Tabs */}
+        <div className="flex gap-4 mb-8 border-b border-slate-200 dark:border-slate-700">
+          <button
+            onClick={() => setTab('activation')}
+            className={`px-6 py-3 font-bold text-sm border-b-2 transition-colors ${
+              tab === 'activation'
+                ? 'border-[#0f6df0] text-[#0f6df0]'
+                : 'border-transparent text-slate-600 dark:text-slate-400'
+            }`}
+          >
+            <span className="flex items-center gap-2">
+              <span className="material-symbols-outlined text-base">phone</span>
+              Activation Services (5sim)
+            </span>
+          </button>
+          <button
+            onClick={() => setTab('smm')}
+            className={`px-6 py-3 font-bold text-sm border-b-2 transition-colors ${
+              tab === 'smm'
+                ? 'border-[#0f6df0] text-[#0f6df0]'
+                : 'border-transparent text-slate-600 dark:text-slate-400'
+            }`}
+          >
+            <span className="flex items-center gap-2">
+              <span className="material-symbols-outlined text-base">trending_up</span>
+              SMM Services (CrestPanel)
+            </span>
+          </button>
+        </div>
 
-              <div className="p-8 space-y-8">
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-6 items-start">
-                  <div className="space-y-1">
-                    <label className="text-sm font-bold text-slate-900 dark:text-slate-100">Global Markup (Fixed NGN)</label>
-                    <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
-                      Set a flat fee markup applied to every activation transaction.
-                    </p>
-                  </div>
+        {/* Activation Services Tab */}
+        {tab === 'activation' && (
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+            <div className="bg-white dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 shadow-sm">
+              <form onSubmit={handleSaveActivation} className="space-y-6 p-6">
+                <div>
+                  <h4 className="text-lg font-bold text-slate-900 dark:text-white mb-4">Price Configuration</h4>
 
-                  <div className="md:col-span-2">
-                    <div className="relative max-w-xs">
-                      <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                        <span className="text-slate-500 font-medium">N</span>
-                      </div>
-
+                  <div className="space-y-4">
+                    <div>
+                      <label className="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">
+                        Global Markup (%)
+                      </label>
                       <input
-                        className="block w-full pl-8 pr-12 py-3 border border-slate-200 dark:border-slate-700 rounded-lg bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-[#0f6df0] focus:border-transparent transition-all outline-none"
-                        placeholder="0.00"
                         type="number"
                         min="0"
-                        step="0.01"
+                        step="0.1"
                         value={globalMarkup}
                         onChange={(e) => setGlobalMarkup(e.target.value)}
                         disabled={loading}
-                        required
+                        className="w-full px-4 py-2 border border-slate-200 dark:border-slate-700 rounded-lg bg-slate-50 dark:bg-slate-700 text-slate-900 dark:text-white focus:ring-2 focus:ring-[#0f6df0] outline-none"
                       />
+                      <p className="text-xs text-slate-500 dark:text-slate-400 mt-2">
+                        Percentage added to all activation services
+                      </p>
+                    </div>
 
-                      <div className="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none">
-                        <span className="text-xs text-slate-400 font-bold">NGN</span>
-                      </div>
+                    <div className="border-t border-slate-200 dark:border-slate-700 pt-4">
+                      <label className="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">
+                        Exchange Rate (₦/USD)
+                      </label>
+                      <input
+                        type="number"
+                        min="0"
+                        step="1"
+                        value={exchangeRate}
+                        onChange={(e) => setExchangeRate(e.target.value)}
+                        disabled={loading}
+                        className="w-full px-4 py-2 border border-slate-200 dark:border-slate-700 rounded-lg bg-slate-50 dark:bg-slate-700 text-slate-900 dark:text-white focus:ring-2 focus:ring-[#0f6df0] outline-none"
+                      />
+                      <p className="text-xs text-slate-500 dark:text-slate-400 mt-2">
+                        How many Naira equals 1 USD
+                      </p>
+                    </div>
+
+                    <div className="bg-blue-50 dark:bg-[#0f6df0]/5 border border-blue-100 dark:border-[#0f6df0]/20 rounded-lg p-3">
+                      <p className="text-xs font-semibold text-slate-900 dark:text-slate-100 mb-2">Formula:</p>
+                      <p className="text-xs text-slate-600 dark:text-slate-300">
+                        Final = Service (USD) × {exchangeRate || '?'} × (1 + {globalMarkup || '0'}%)
+                      </p>
                     </div>
                   </div>
                 </div>
 
-                <hr className="border-slate-100 dark:border-slate-800" />
+                <div className="flex gap-2 border-t border-slate-200 dark:border-slate-700 pt-4">
+                  <button
+                    type="submit"
+                    disabled={saving || loading || !hasActivationChanges}
+                    className="flex-1 bg-[#0f6df0] hover:bg-[#0d5ed9] text-white px-4 py-2 rounded-lg font-bold text-sm flex items-center justify-center gap-2 transition-colors disabled:opacity-50"
+                  >
+                    <span className={`material-symbols-outlined ${saving ? 'animate-spin' : ''}`}>
+                      {saving ? 'refresh' : 'save'}
+                    </span>
+                    Save
+                  </button>
+                </div>
+              </form>
+            </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-6 items-start">
-                  <div className="space-y-1">
-                    <label className="text-sm font-bold text-slate-900 dark:text-slate-100">USD to NGN Exchange Rate</label>
-                    <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
-                      Specify the current conversion rate for United States Dollar to Nigerian Naira.
-                    </p>
-                  </div>
-
-                  <div className="md:col-span-2">
-                    <div className="flex items-center gap-4 max-w-sm">
-                      <div className="flex-1 relative">
-                        <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                          <span className="text-slate-500 font-medium">1 USD =</span>
-                        </div>
-
-                        <input
-                          className="block w-full pl-16 pr-12 py-3 border border-slate-200 dark:border-slate-700 rounded-lg bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-[#0f6df0] focus:border-transparent transition-all outline-none"
-                          placeholder="0.00"
-                          type="number"
-                          min="0.01"
-                          step="0.01"
-                          value={exchangeRate}
-                          onChange={(e) => setExchangeRate(e.target.value)}
-                          disabled={loading}
-                          required
-                        />
-
-                        <div className="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none">
-                          <span className="text-xs text-slate-400 font-bold">NGN</span>
-                        </div>
-                      </div>
-
-                      <div className="bg-[#0f6df0]/5 p-2 rounded-lg border border-[#0f6df0]/20 flex items-center justify-center">
-                        <span className="material-symbols-outlined text-[#0f6df0] text-xl">sync</span>
-                      </div>
+            <div className="bg-white dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 shadow-sm p-6">
+              <h4 className="text-lg font-bold text-slate-900 dark:text-white mb-4">Services</h4>
+              <div className="space-y-3 max-h-96 overflow-y-auto">
+                {activationServices.length === 0 ? (
+                  <p className="text-sm text-slate-500">No services found</p>
+                ) : (
+                  activationServices.map((service) => (
+                    <div key={service.id} className="p-3 bg-slate-50 dark:bg-slate-700/50 rounded border border-slate-200 dark:border-slate-600">
+                      <p className="font-semibold text-slate-900 dark:text-white text-sm">{service.service?.name}</p>
+                      <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                        Final Price: {formatMoney(service.final_price)}
+                      </p>
                     </div>
-
-                    <p className="text-[10px] mt-2 text-slate-400 italic">Used in final price calculation instantly after save.</p>
-                  </div>
-                </div>
-
-                <div className="bg-blue-50 dark:bg-[#0f6df0]/5 border border-blue-100 dark:border-[#0f6df0]/20 rounded-xl p-4">
-                  <p className="text-xs text-slate-600 dark:text-slate-300">
-                    <span className="font-bold">Formula Preview:</span>{' '}
-                    Final Price = (5SIM cost x {exchangeRate || '?'}) + {globalMarkup || '?'}
-                    {' -> '}
-                    <span className="font-bold text-slate-900 dark:text-slate-100">{previewPrice ? `N${previewPrice}` : 'N?'}</span>
-                  </p>
-                </div>
+                  ))
+                )}
               </div>
-
-              <div className="px-8 py-6 bg-slate-50 dark:bg-slate-800/50 border-t border-slate-200 dark:border-slate-800 flex justify-end gap-3">
-                <button
-                  type="button"
-                  onClick={handleDiscard}
-                  disabled={!hasChanges || saving || loading}
-                  className="px-6 py-2 text-sm font-bold text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  Discard Changes
-                </button>
-
-                <button
-                  type="submit"
-                  disabled={saving || loading || !hasChanges}
-                  className="bg-[#0f6df0] hover:bg-[#0d5ed9] text-white px-8 py-2.5 rounded-lg text-sm font-bold flex items-center gap-2 shadow-lg shadow-[#0f6df0]/20 transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  <span className={`material-symbols-outlined text-sm ${saving ? 'animate-spin' : ''}`}>
-                    {saving ? 'refresh' : 'save'}
-                  </span>
-                  {saving ? 'Saving...' : 'Save Settings'}
-                </button>
-              </div>
-            </section>
-          </form>
-
-          <div className="bg-blue-50 dark:bg-[#0f6df0]/5 border border-blue-100 dark:border-[#0f6df0]/20 rounded-xl p-6 flex gap-4">
-            <span className="material-symbols-outlined text-[#0f6df0]">info</span>
-            <div>
-              <h5 className="text-sm font-bold text-slate-900 dark:text-slate-100">Audit Notice</h5>
-              <p className="text-sm text-slate-600 dark:text-slate-400 mt-1">
-                Changing these settings will immediately affect all pending and future transactions. Every update is logged in the system for security and auditing purposes.
-              </p>
             </div>
           </div>
-        </div>
+        )}
+
+        {/* SMM Services Tab */}
+        {tab === 'smm' && (
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+            <div className="bg-white dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 shadow-sm">
+              <form onSubmit={handleSaveSmm} className="space-y-6 p-6">
+                <div>
+                  <h4 className="text-lg font-bold text-slate-900 dark:text-white mb-4">Global Configuration</h4>
+
+                  <div className="space-y-4">
+                    <div>
+                      <label className="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">
+                        Markup Type
+                      </label>
+                      <select
+                        value={smmGlobalMarkupType}
+                        onChange={(e) => setSmmGlobalMarkupType(e.target.value)}
+                        disabled={loading}
+                        className="w-full px-4 py-2 border border-slate-200 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-700 text-slate-900 dark:text-white focus:ring-2 focus:ring-[#0f6df0] outline-none"
+                      >
+                        <option value="fixed">Fixed (₦)</option>
+                        <option value="percent">Percentage (%)</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">
+                        {smmGlobalMarkupType === 'fixed' ? 'Fixed Amount' : 'Percentage'}
+                      </label>
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="number"
+                          min="0"
+                          step={smmGlobalMarkupType === 'fixed' ? '1' : '0.1'}
+                          value={smmGlobalMarkupFixed}
+                          onChange={(e) => setSmmGlobalMarkupFixed(e.target.value)}
+                          disabled={loading}
+                          className="flex-1 px-4 py-2 border border-slate-200 dark:border-slate-700 rounded-lg bg-slate-50 dark:bg-slate-700 text-slate-900 dark:text-white focus:ring-2 focus:ring-[#0f6df0] outline-none"
+                        />
+                        <span className="text-sm font-semibold text-slate-600 dark:text-slate-400">
+                          {smmGlobalMarkupType === 'fixed' ? '₦' : '%'}
+                        </span>
+                      </div>
+                      <p className="text-xs text-slate-500 dark:text-slate-400 mt-2">
+                        Added to all SMM services on top of CrestPanel rate
+                      </p>
+                    </div>
+
+                    <div className="bg-blue-50 dark:bg-[#0f6df0]/5 border border-blue-100 dark:border-[#0f6df0]/20 rounded-lg p-3">
+                      <p className="text-xs font-semibold text-slate-900 dark:text-slate-100 mb-2">Formula:</p>
+                      <p className="text-xs text-slate-600 dark:text-slate-300">
+                        Final = CrestPanel Rate
+                        {smmGlobalMarkupType === 'fixed' ? ` + ${smmGlobalMarkupFixed || '0'} ₦` : ` × (1 + ${smmGlobalMarkupFixed || '0'}%)`}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex gap-2 border-t border-slate-200 dark:border-slate-700 pt-4">
+                  <button
+                    type="submit"
+                    disabled={saving || loading || !hasSmmChanges}
+                    className="flex-1 bg-[#0f6df0] hover:bg-[#0d5ed9] text-white px-4 py-2 rounded-lg font-bold text-sm flex items-center justify-center gap-2 transition-colors disabled:opacity-50"
+                  >
+                    <span className={`material-symbols-outlined ${saving ? 'animate-spin' : ''}`}>
+                      {saving ? 'refresh' : 'save'}
+                    </span>
+                    Save
+                  </button>
+                </div>
+              </form>
+            </div>
+
+            <div className="bg-white dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 shadow-sm p-6">
+              <h4 className="text-lg font-bold text-slate-900 dark:text-white mb-4 flex items-center gap-2">
+                <span className="material-symbols-outlined">star</span>
+                Services List
+              </h4>
+              <div className="space-y-3 max-h-96 overflow-y-auto">
+                {smmServices.length === 0 ? (
+                  <p className="text-sm text-slate-500">No SMM services found. Sync first.</p>
+                ) : (
+                  smmServices.map((service, idx) => (
+                    <div
+                      key={service.id}
+                      className="p-3 bg-slate-50 dark:bg-slate-700/50 rounded border border-slate-200 dark:border-slate-600 rounded text-xs space-y-1"
+                    >
+                      <div className="flex items-start justify-between">
+                        <p className="font-bold text-slate-900 dark:text-white">{service.smm_service?.name}</p>
+                        <span className="text-slate-400 bg-slate-200 dark:bg-slate-600 px-2 py-0.5 rounded">#{idx + 1}</span>
+                      </div>
+                      <p className="text-slate-600 dark:text-slate-300">
+                        <span className="font-semibold">CrestPanel Rate:</span> {formatMoney(service.smm_service?.rate || 0)}/unit
+                      </p>
+                      <p className="text-slate-600 dark:text-slate-300">
+                        <span className="font-semibold">Your Markup:</span> {service.markup_type === 'Fixed' ? formatMoney(service.markup_value) : `${service.markup_value}%`}
+                      </p>
+                      <p className="text-green-600 dark:text-green-400 font-bold">
+                        Customer Pays: {formatMoney(service.final_price)}/unit
+                      </p>
+                      <p className="text-slate-400">Qty: {service.smm_service?.min} - {service.smm_service?.max}</p>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

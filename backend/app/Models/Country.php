@@ -14,6 +14,12 @@ class Country extends Model
         'name',
         'code',
         'provider_code',
+        'provider_iso',
+        'provider_prefix',
+        'provider_name_ru',
+        'provider_capabilities',
+        'provider_payload',
+        'last_synced_at',
         'flag',
         'is_active',
     ];
@@ -21,6 +27,11 @@ class Country extends Model
     protected function casts(): array
     {
         return [
+            'provider_iso' => 'array',
+            'provider_prefix' => 'array',
+            'provider_capabilities' => 'array',
+            'provider_payload' => 'array',
+            'last_synced_at' => 'datetime',
             'is_active' => 'boolean',
         ];
     }

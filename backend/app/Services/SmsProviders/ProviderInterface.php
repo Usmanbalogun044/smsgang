@@ -4,7 +4,7 @@ namespace App\Services\SmsProviders;
 
 interface ProviderInterface
 {
-    public function buyNumber(string $product, string $country): array;
+    public function buyNumber(string $product, string $country, ?string $operator = null): array;
 
     public function checkSms(string $activationId): ?array;
 

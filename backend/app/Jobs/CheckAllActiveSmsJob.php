@@ -19,17 +19,36 @@ class CheckAllActiveSmsJob implements ShouldQueue
 
     public function handle(): void
     {
-        // Find all activations that are currently active (waiting for SMS)
-        $activations = Activation::where('status', ActivationStatus::WaitingSms)
-            ->where('expires_at', '>', now())
-            ->get();
+        $startTime = microtime(true);
+        
+        try {
+            // Find all activations that are currently active (waiting for SMS)
+            $activations = Activation::where('status', ActivationStatus::WaitingSms->value)
+                ->where('expires_at', '>', now())
+                ->with(['service', 'country', 'order.user'])
+                ->get();
 
-        Log::info("SMS Check: Found {$activations->count()} active sessions to check.");
+            $totalCount = $activations->count();
 
-        foreach ($activations as $activation) {
-            Log::info("Dispatching SMS check for Activation #{$activation->id} ({$activation->service->name})");
-            // Dispatch the individual checker for this activation
-            CheckSmsJob::dispatch($activation->id);
+            foreach ($activations as $activation) {
+                // Dispatch the individual checker for this activation
+                CheckSmsJob::dispatch($activation->id);
+            }
+
+            $duration = microtime(true) - $startTime;
+            
+            Log::channel('activity')->info(
+                "✅ SMS Check Job: Checked {$totalCount} active session(s) in " . 
+                number_format($duration, 2) . "s"
+            );
+            
+        } catch (\Exception $e) {
+            $duration = microtime(true) - $startTime;
+            Log::channel('activity')->error(
+                "❌ SMS Check Job Failed: {$e->getMessage()} ({$duration}s)"
+            );
+            throw $e;
         }
     }
 }
+

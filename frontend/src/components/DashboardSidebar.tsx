@@ -71,6 +71,26 @@ export default function DashboardSidebar({ mobileOpen = false, setMobileOpen }: 
         </Link>
 
         <div className="pt-4 pb-2 px-3 text-xs font-bold text-slate-400 uppercase tracking-wider">
+          Social Media
+        </div>
+        <Link href="/smm/services" className={linkClass('/smm/services')} onClick={closeMobile}>
+          <span className="material-symbols-outlined" style={{ fontSize: 20 }}>trending_up</span>
+          Boost Social
+        </Link>
+        <Link href="/smm/orders" className={linkClass('/smm/orders')} onClick={closeMobile}>
+          <span className="material-symbols-outlined" style={{ fontSize: 20 }}>assignment</span>
+          SMM Orders
+        </Link>
+
+        <div className="pt-4 pb-2 px-3 text-xs font-bold text-slate-400 uppercase tracking-wider">
+          Wallet
+        </div>
+        <Link href="/wallet" className={linkClass('/wallet')} onClick={closeMobile}>
+          <span className="material-symbols-outlined" style={{ fontSize: 20 }}>account_balance_wallet</span>
+          My Wallet
+        </Link>
+
+        <div className="pt-4 pb-2 px-3 text-xs font-bold text-slate-400 uppercase tracking-wider">
           Account
         </div>
         <Link href="/settings" className={linkClass('/settings')} onClick={closeMobile}>

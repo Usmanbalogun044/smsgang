@@ -5,6 +5,7 @@ import api from '@/lib/api';
 import toast from 'react-hot-toast';
 import type { User, PaginatedResponse } from '@/lib/types';
 import Pagination from '@/components/Pagination';
+import useRealtimeRefresh from '@/hooks/useRealtimeRefresh';
 
 interface UserStats {
     total_users: number;
@@ -22,8 +23,11 @@ export default function UsersPage() {
     const [roleFilter, setRoleFilter] = useState<string>('');
 
     // Fetch Users
-    const fetchUsers = async () => {
-        setLoading(true);
+    const fetchUsers = async (silent = false) => {
+        if (!silent) {
+            setLoading(true);
+        }
+
         try {
             const params = new URLSearchParams({ page: String(page) });
             if (search) params.append('search', search);
@@ -31,10 +35,14 @@ export default function UsersPage() {
 
             const { data } = await api.get<PaginatedResponse<User>>(`/admin/users?${params.toString()}`);
             setData(data);
-        } catch (error) {
-            toast.error('Failed to load users');
+        } catch {
+            if (!silent) {
+                toast.error('Failed to load users');
+            }
         } finally {
-            setLoading(false);
+            if (!silent) {
+                setLoading(false);
+            }
         }
     };
 
@@ -49,15 +57,19 @@ export default function UsersPage() {
     };
 
     useEffect(() => {
-        fetchStats();
+        void fetchStats();
     }, []);
 
     useEffect(() => {
         const timer = setTimeout(() => {
-            fetchUsers();
+            void fetchUsers();
         }, 300);
         return () => clearTimeout(timer);
     }, [page, search, roleFilter]);
+
+    useRealtimeRefresh(() => {
+        void Promise.all([fetchUsers(true), fetchStats()]);
+    });
 
 
     const toggleInternalStatus = async (user: User) => {
@@ -73,9 +85,9 @@ export default function UsersPage() {
         try {
             await api.put(`/admin/users/${user.id}`, { status: newStatus });
             toast.success(`User ${newStatus === 'active' ? 'activated' : 'suspended'}`);
-            fetchStats(); // Update stats
+            void fetchStats(); // Update stats
         } catch {
-            fetchUsers(); // Revert on error
+            void fetchUsers(); // Revert on error
             toast.error('Failed to update status');
         }
     };

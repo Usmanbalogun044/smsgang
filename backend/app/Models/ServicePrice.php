@@ -15,6 +15,10 @@ class ServicePrice extends Model
         'service_id',
         'country_id',
         'provider_price',
+        'available_count',
+        'operator_count',
+        'provider_payload',
+        'last_seen_at',
         'markup_type',
         'markup_value',
         'final_price',
@@ -25,6 +29,10 @@ class ServicePrice extends Model
     {
         return [
             'provider_price' => 'decimal:2',
+            'available_count' => 'integer',
+            'operator_count' => 'integer',
+            'provider_payload' => 'array',
+            'last_seen_at' => 'datetime',
             'markup_value' => 'decimal:2',
             'final_price' => 'decimal:2',
             'markup_type' => MarkupType::class,

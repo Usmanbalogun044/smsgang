@@ -18,10 +18,12 @@ class FiveSimProvider implements ProviderInterface
         $this->apiKey = config('services.fivesim.api_key');
     }
 
-    public function buyNumber(string $product, string $country): array
+    public function buyNumber(string $product, string $country, ?string $operator = null): array
     {
+        $resolvedOperator = $operator ?: 'any';
+
         $response = $this->request()
-            ->get("{$this->baseUrl}/user/buy/activation/{$country}/any/{$product}");
+            ->get("{$this->baseUrl}/user/buy/activation/{$country}/{$resolvedOperator}/{$product}");
 
         $response->throw();
 
@@ -31,6 +33,8 @@ class FiveSimProvider implements ProviderInterface
             'id' => (string) $data['id'],
             'phone' => $data['phone'],
             'operator' => $data['operator'] ?? null,
+            'price' => isset($data['price']) ? (float) $data['price'] : null,
+            'cost' => isset($data['cost']) ? (float) $data['cost'] : null,
             'expires_at' => $data['expires'] ?? null,
         ];
     }

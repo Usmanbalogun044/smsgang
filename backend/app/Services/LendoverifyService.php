@@ -30,7 +30,7 @@ class LendoverifyService
             $response = Http::withHeaders([
                 'api-key' => $this->apiKey,
                 'accept' => 'application/json',
-            ])->asForm()->post("{$this->baseUrl}/api/customers/transaction/initialize", [
+            ])->timeout(30)->retry(2, 100)->asForm()->post("{$this->baseUrl}/api/customers/transaction/initialize", [
                 'customerEmail' => $data['customerEmail'],
                 'customerName' => $data['customerName'],
                 'amount' => $data['amount'],
@@ -69,9 +69,15 @@ class LendoverifyService
             ]);
 
             throw new \Exception('Failed to initialize transaction: ' . ($response->json()['message'] ?? 'Unknown error'));
+        } catch (\Illuminate\Http\Client\ConnectionException $e) {
+            Log::error('Lendoverify Connection Error', ['message' => $e->getMessage()]);
+            throw new \Exception('Unable to connect to payment gateway. Please try again later.');
+        } catch (\Illuminate\Http\Client\RequestException $e) {
+            Log::error('Lendoverify Request Error', ['message' => $e->getMessage()]);
+            throw new \Exception('Payment gateway error. Please try again later.');
         } catch (\Exception $e) {
             Log::error('Lendoverify API Exception', ['message' => $e->getMessage()]);
-            throw $e;
+            throw new \Exception('Failed to initialize payment. Please try again.');
         }
     }
 

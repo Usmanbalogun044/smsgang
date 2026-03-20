@@ -13,6 +13,11 @@ export interface Service {
   name: string;
   slug: string;
   provider_service_code: string;
+  provider_category?: string | null;
+  provider_qty?: number | null;
+  provider_base_price?: number | null;
+  provider_payload?: Record<string, unknown> | null;
+  last_synced_at?: string | null;
   is_active: boolean;
 }
 
@@ -20,6 +25,14 @@ export interface Country {
   id: number;
   name: string;
   code: string;
+  provider_code?: string | null;
+  provider_name_ru?: string | null;
+  provider_iso?: Record<string, number> | null;
+  provider_prefix?: Record<string, number> | null;
+  provider_capabilities?: Record<string, unknown> | null;
+  provider_payload?: Record<string, unknown> | null;
+  last_synced_at?: string | null;
+  service_prices_count?: number;
   flag: string | null;
   is_active: boolean;
 }
@@ -29,7 +42,11 @@ export interface ServicePrice {
   service: Service;
   country: Country;
   provider_price: number;
-  markup_type: 'percent' | 'fixed';
+  available_count?: number;
+  operator_count?: number;
+  provider_payload?: Record<string, { cost?: number; count?: number; [key: string]: unknown }> | null;
+  last_seen_at?: string | null;
+  markup_type: 'percent' | 'percentage' | 'fixed';
   markup_value: number;
   final_price: number;
   is_active: boolean;
@@ -55,6 +72,7 @@ export interface Activation {
   sms_code: string | null;
   status: ActivationStatus;
   provider: string;
+  provider_operator?: string | null;
   expires_at: string;
   created_at: string;
   service: Service;
@@ -124,3 +142,47 @@ export interface Transaction {
   user?: User;
   created_at: string;
 }
+
+// SMM Types
+export interface SmmService {
+  id: number;
+  crestpanel_service_id: number;
+  name: string;
+  category: string;
+  type: string;
+  rate: number;
+  min: number;
+  max: number;
+  refill: number | null;
+  cancel: number | null;
+  is_active: boolean;
+  created_at: string;
+}
+
+export interface SmmServicePrice {
+  id: number;
+  smm_service_id: number;
+  smm_service?: SmmService;
+  markup_type: 'Fixed' | 'Percent';
+  markup_value: number;
+  final_price: number;
+  is_active: boolean;
+  created_at: string;
+}
+
+export interface SmmOrder {
+  id: number;
+  user_id: number;
+  smm_service_id: number;
+  crestpanel_order_id: string;
+  link: string;
+  quantity: number;
+  total_cost_ngn: number;
+  charge_ngn: number;
+  status: 'Pending' | 'In progress' | 'Partial' | 'Completed' | 'Failed' | 'Cancelled';
+  smm_service?: SmmService;
+  user?: User;
+  created_at: string;
+  updated_at: string;
+}
+

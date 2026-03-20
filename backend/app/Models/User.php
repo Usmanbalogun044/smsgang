@@ -43,6 +43,17 @@ class User extends Authenticatable
         ];
     }
 
+    public function wallet()
+    {
+        return $this->hasOne(Wallet::class);
+    }
+
+    public function getBalance(): string
+    {
+        $wallet = $this->wallet;
+        return $wallet ? (string) $wallet->balance : '0.00';
+    }
+
     public function orders(): HasMany
     {
         return $this->hasMany(Order::class);

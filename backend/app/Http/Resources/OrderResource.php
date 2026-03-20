@@ -15,6 +15,7 @@ class OrderResource extends JsonResource
             'user' => new UserResource($this->whenLoaded('user')),
             'service' => new ServiceResource($this->whenLoaded('service')),
             'country' => new CountryResource($this->whenLoaded('country')),
+            'selected_operator' => $this->selected_operator,
             'price' => $this->price,
             'status' => $this->status->value,
             'payment_reference' => $this->payment_reference,

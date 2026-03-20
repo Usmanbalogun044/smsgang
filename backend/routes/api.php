@@ -7,6 +7,9 @@ use App\Http\Controllers\Api\Admin\AdminOrderController;
 use App\Http\Controllers\Api\Admin\AdminPricingController;
 use App\Http\Controllers\Api\Admin\AdminServiceController;
 use App\Http\Controllers\Api\Admin\AdminSettingsController;
+use App\Http\Controllers\Api\Admin\AdminSmmOrderController;
+use App\Http\Controllers\Api\Admin\AdminSmmServiceController;
+use App\Http\Controllers\Api\Admin\AdminSmmSettingsController;
 use App\Http\Controllers\Api\Admin\AdminTransactionController;
 use App\Http\Controllers\Api\Admin\AdminUserController;
 use App\Http\Controllers\Api\Admin\WithdrawalController;
@@ -14,7 +17,10 @@ use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\LendoverifyWebhookController;
 use App\Http\Controllers\Api\OrderController;
 use App\Http\Controllers\Api\ServiceController;
+use App\Http\Controllers\Api\SmmOrderController;
+use App\Http\Controllers\Api\SmmServiceController;
 use App\Http\Controllers\Api\TransactionController;
+use App\Http\Controllers\Api\WalletController;
 use Illuminate\Support\Facades\Route;
 
 // Public auth routes
@@ -59,6 +65,24 @@ Route::middleware(['auth:sanctum', 'active', 'throttle:api'])->group(function ()
 
     // Transactions
     Route::get('/transactions', [TransactionController::class, 'index']);
+
+    // Wallet
+    Route::prefix('wallet')->group(function () {
+        Route::get('/balance', [WalletController::class, 'getBalance']);
+        Route::post('/fund', [WalletController::class, 'fund']);
+        Route::post('/verify-funding', [WalletController::class, 'verifyFunding']);
+        Route::get('/transactions', [WalletController::class, 'getTransactions']);
+        Route::get('/history', [WalletController::class, 'getTransactions']); // alias
+    });
+
+    // SMM Services & Orders
+    Route::prefix('smm')->group(function () {
+        Route::get('/services', [SmmServiceController::class, 'index']);
+        Route::get('/services/{service}', [SmmServiceController::class, 'show']);
+        Route::post('/orders', [SmmOrderController::class, 'store']);
+        Route::get('/orders', [SmmOrderController::class, 'index']);
+        Route::get('/orders/{order}', [SmmOrderController::class, 'show']);
+    });
 });
 
 // Admin routes
@@ -104,4 +128,18 @@ Route::middleware(['auth:sanctum', 'active', 'admin', 'throttle:api'])
         // Transactions
         Route::get('/transactions', [AdminTransactionController::class, 'index']);
         Route::get('/transactions/{transaction}', [AdminTransactionController::class, 'show']);
+
+        // SMM Services
+        Route::get('/smm/services', [AdminSmmServiceController::class, 'index']);
+        Route::put('/smm/services/{service}', [AdminSmmServiceController::class, 'toggle']);
+        Route::post('/smm/services/sync', [AdminSmmServiceController::class, 'sync']);
+
+        // SMM Settings
+        Route::get('/smm/settings', [AdminSmmSettingsController::class, 'index']);
+        Route::put('/smm/settings', [AdminSmmSettingsController::class, 'update']);
+        Route::put('/smm/services/{serviceId}/markup', [AdminSmmSettingsController::class, 'updateServiceMarkup']);
+
+        // SMM Orders
+        Route::get('/smm/orders', [AdminSmmOrderController::class, 'index']);
+        Route::get('/smm/orders/{order}', [AdminSmmOrderController::class, 'show']);
     });

@@ -61,6 +61,17 @@ export default function ActivationsPage() {
 
   useEffect(() => { if (user) fetchActivations(); }, [page, user]);
 
+  // Auto-refresh activations every 2 seconds for real-time SMS updates
+  useEffect(() => {
+    if (!user) return;
+    const interval = setInterval(() => {
+      api.get(`/activations?page=${page}`)
+        .then(({ data }) => { setActivations(data.data); setMeta(data.meta); })
+        .catch(() => {}); // silent
+    }, 2000);
+    return () => clearInterval(interval);
+  }, [user, page]);
+
   const cancelActivation = (id: number) => {
     api.post(`/activations/${id}/cancel`)
       .then(() => {

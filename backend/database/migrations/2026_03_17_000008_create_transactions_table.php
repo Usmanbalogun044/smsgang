@@ -15,6 +15,8 @@ return new class extends Migration
             $table->id();
             $table->foreignId('user_id')->constrained()->cascadeOnDelete();
             $table->foreignId('order_id')->nullable()->constrained()->nullOnDelete();
+            $table->foreignId('smm_order_id')->nullable()->constrained('smm_orders')->nullOnDelete();
+            $table->string('type', 20)->default('credit'); // credit, debit
             $table->string('reference')->unique();        // our internal SMS_ reference
             $table->string('gateway')->default('lendoverify');
             $table->string('gateway_reference')->nullable(); // gateway's own ref

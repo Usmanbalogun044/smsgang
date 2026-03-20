@@ -16,6 +16,7 @@ class ActivationResource extends JsonResource
             'sms_code' => $this->sms_code,
             'status' => $this->status->value,
             'provider' => $this->provider,
+            'provider_operator' => $this->provider_operator,
             'provider_activation_id' => $this->when($request->user()?->isAdmin(), $this->provider_activation_id),
             'expires_at' => $this->expires_at,
             'created_at' => $this->created_at,

@@ -1,10 +1,10 @@
 'use client';
-'use client';
 
 import { useEffect, useState, useCallback } from 'react';
 import api from '@/lib/api';
 import toast from 'react-hot-toast';
 import Pagination from '@/components/Pagination';
+import useRealtimeRefresh from '@/hooks/useRealtimeRefresh';
 import type { Activation, PaginatedResponse } from '@/lib/types';
 
 const STATUS_LABEL: Record<string, string> = {
@@ -56,19 +56,36 @@ export default function ActivationsPage() {
     return () => clearInterval(id);
   }, []);
 
-  const fetchActivations = useCallback((page = 1) => {
-    setLoading(true);
+  const fetchActivations = useCallback((page = 1, silent = false) => {
+    if (!silent) {
+      setLoading(true);
+    }
+
     const params = new URLSearchParams({ page: String(page), per_page: '20' });
     if (tab === 'active') params.set('status', 'waiting_sms');
     else if (tab === 'completed') params.set('status', 'completed');
     else if (tab === 'cancelled') params.set('status', 'cancelled');
     api.get<PaginatedResponse<Activation>>(`/admin/activations?${params}`)
       .then(({ data }) => { setActivations(data.data); setMeta(data.meta); })
-      .catch(() => toast.error('Failed to load activations'))
-      .finally(() => setLoading(false));
+      .catch(() => {
+        if (!silent) {
+          toast.error('Failed to load activations');
+        }
+      })
+      .finally(() => {
+        if (!silent) {
+          setLoading(false);
+        }
+      });
   }, [tab]);
 
   useEffect(() => { fetchActivations(1); }, [fetchActivations]);
+
+  useRealtimeRefresh(
+    useCallback(() => {
+      fetchActivations(meta.current_page || 1, true);
+    }, [fetchActivations, meta.current_page]),
+  );
 
   const handleExpire = async (activation: Activation) => {
     if (!confirm('Force expire this activation?')) return;

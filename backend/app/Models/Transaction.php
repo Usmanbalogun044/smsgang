@@ -21,6 +21,11 @@ class Transaction extends Model
         'user_agent',
         'gateway_response',
         'verified_at',
+        'operation_type',
+        'smm_order_id',
+        'type',
+        'wallet_id',
+        'metadata',
     ];
 
     protected function casts(): array
@@ -29,6 +34,7 @@ class Transaction extends Model
             'amount'           => 'decimal:2',
             'gateway_response' => 'array',
             'verified_at'      => 'datetime',
+            'metadata'         => 'array',
         ];
     }
 

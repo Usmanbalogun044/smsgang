@@ -50,6 +50,10 @@ return [
         'chat_id' => env('TELEGRAM_CHAT_ID'),
     ],
 
+    'crestpanel' => [
+        'key' => env('CRESTPANEL_API_KEY'),
+    ],
+
     'currency_api' => [
         'base_url' => env('CURRENCY_API_BASE_URL', env('RAPIDAPI_CURRENCY_BASE_URL', '')),
         'latest_path' => env('CURRENCY_API_LATEST_PATH', '/latest'),

@@ -1,9 +1,10 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import api from '@/lib/api';
 import toast from 'react-hot-toast';
 import type { AdminStats, Withdrawal } from '@/lib/types';
+import useRealtimeRefresh from '@/hooks/useRealtimeRefresh';
 
 export default function DashboardPage() {
     const [stats, setStats] = useState<AdminStats | null>(null);
@@ -14,22 +15,36 @@ export default function DashboardPage() {
     const [withdrawNote, setWithdrawNote] = useState('');
     const [withdrawing, setWithdrawing] = useState(false);
 
-    const loadStats = () =>
+    const loadStats = useCallback((silent = false) =>
         api.get('/admin/stats')
             .then(({ data }) => setStats(data.data))
-            .catch(() => toast.error('Failed to load stats'));
+            .catch(() => {
+                if (!silent) {
+                    toast.error('Failed to load stats');
+                }
+            }), []);
 
-    const loadWithdrawals = () =>
+    const loadWithdrawals = useCallback((silent = false) =>
         api.get('/admin/withdrawals')
             .then(({ data }) => {
                 setWithdrawals(data.data);
                 setWithdrawalTotal(data.total);
             })
-            .catch(() => toast.error('Failed to load withdrawals'));
+            .catch(() => {
+                if (!silent) {
+                    toast.error('Failed to load withdrawals');
+                }
+            }), []);
 
     useEffect(() => {
         Promise.all([loadStats(), loadWithdrawals()]).finally(() => setLoading(false));
-    }, []); // eslint-disable-line react-hooks/exhaustive-deps
+    }, [loadStats, loadWithdrawals]);
+
+    useRealtimeRefresh(
+        useCallback(() => {
+            void Promise.all([loadStats(true), loadWithdrawals(true)]);
+        }, [loadStats, loadWithdrawals]),
+    );
 
     const handleWithdraw = async (e: React.FormEvent) => {
         e.preventDefault();

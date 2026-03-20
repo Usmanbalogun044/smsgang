@@ -22,6 +22,8 @@ class AdminPricingController extends Controller
 
     public function index(Request $request): AnonymousResourceCollection
     {
+        $perPage = max(1, min((int) $request->integer('per_page', 100), 500));
+
         $query = ServicePrice::with(['service', 'country']);
 
         if ($request->has('service_id')) {
@@ -35,12 +37,23 @@ class AdminPricingController extends Controller
         if ($request->has('search')) {
             $search = $request->input('search');
             $query->where(function($q) use ($search) {
-                $q->whereHas('service', fn($qq) => $qq->where('name', 'like', "%{$search}%"))
-                  ->orWhereHas('country', fn($qq) => $qq->where('name', 'like', "%{$search}%"));
+                $q->whereHas('service', fn($qq) => $qq
+                    ->where('name', 'like', "%{$search}%")
+                    ->orWhere('provider_service_code', 'like', "%{$search}%")
+                )
+                  ->orWhereHas('country', fn($qq) => $qq
+                      ->where('name', 'like', "%{$search}%")
+                      ->orWhere('provider_code', 'like', "%{$search}%")
+                  );
             });
         }
 
-        return ServicePriceResource::collection($query->orderBy('updated_at', 'desc')->paginate(50));
+        return ServicePriceResource::collection(
+            $query
+                ->orderBy('updated_at', 'desc')
+                ->paginate($perPage)
+                ->appends($request->query())
+        );
     }
 
     public function update(UpdatePricingRequest $request, ServicePrice $servicePrice): ServicePriceResource

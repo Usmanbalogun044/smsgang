@@ -1,0 +1,214 @@
+name: SMSGang Backend CI/CD
+
+on:
+  push:
+    branches:
+      - main
+      - develop
+    tags:
+      - "v*.*.*"
+  pull_request:
+    branches:
+      - main
+      - develop
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}/backend
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Container Registry
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=ref,event=branch
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=sha,prefix={{branch}}-
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./backend
+          file: ./backend/Dockerfile
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  test:
+    runs-on: ubuntu-latest
+    
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_DATABASE: smsgang_test
+          MYSQL_ROOT_PASSWORD: rootpass123
+        options: >-
+          --health-cmd="mysqladmin ping"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
+        ports:
+          - 3306:3306
+
+      redis:
+        image: redis:7-alpine
+        options: >-
+          --health-cmd="redis-cli ping"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
+        ports:
+          - 6379:6379
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php-action@v2
+        with:
+          php-version: '8.2'
+          extensions: pdo, pdo_mysql, mbstring, bcmath, redis
+          coverage: pcov
+
+      - name: Install dependencies
+        run: |
+          cd backend
+          composer install --no-interaction --prefer-dist
+
+      - name: Run migrations
+        run: |
+          cd backend
+          php artisan migrate --env=testing
+        env:
+          DB_CONNECTION: mysql
+          DB_HOST: 127.0.0.1
+          DB_PORT: 3306
+          DB_DATABASE: smsgang_test
+          DB_USERNAME: root
+          DB_PASSWORD: rootpass123
+
+      - name: Execute tests
+        run: |
+          cd backend
+          php artisan test
+        env:
+          DB_CONNECTION: mysql
+          DB_HOST: 127.0.0.1
+          DB_PORT: 3306
+          DB_DATABASE: smsgang_test
+          DB_USERNAME: root
+          DB_PASSWORD: rootpass123
+
+  deploy:
+    needs: [build, test]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment:
+      name: production
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Copy files to VPS
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          source: "backend/.env.production,backend/openapi.yml,backend/docker-compose.prod.yml,backend/server/default-production.conf,backend/Makefile,backend/scripts"
+          target: /home/${{ secrets.VPS_USER }}/smsgang
+          strip_components: 1
+
+      - name: Deploy to VPS
+        uses: appleboy/ssh-action@v1.0.3
+        env:
+          GH_PAT: ${{ secrets.GH_PAT }}
+          REGISTRY: ${{ env.REGISTRY }}
+          IMAGE: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          envs: GH_PAT,REGISTRY,IMAGE
+          script: |
+            # Login to registry
+            echo $GH_PAT | docker login $REGISTRY -u ${{ github.actor }} --password-stdin
+            
+            # Navigate to deployment directory
+            mkdir -p /home/${{ secrets.VPS_USER }}/smsgang
+            cd /home/${{ secrets.VPS_USER }}/smsgang
+            
+            # Setup .env if not exists
+            if [ ! -f .env ]; then
+              cp .env.production .env
+              echo "⚠️  Created .env from .env.production - PLEASE UPDATE WITH PRODUCTION SECRETS"
+            fi
+            
+            # Pull latest image
+            docker compose -f docker-compose.prod.yml pull
+            
+            # Stop and remove old containers
+            docker compose -f docker-compose.prod.yml down --remove-orphans
+            
+            # Start new containers
+            docker compose -f docker-compose.prod.yml up -d
+            
+            # Wait for services to be healthy
+            sleep 10
+            
+            # Run migrations
+            docker compose -f docker-compose.prod.yml exec -T app php artisan migrate --force
+            
+            # Optimize application
+            docker compose -f docker-compose.prod.yml exec -T app php artisan optimize
+            
+            # Clear old images
+            docker image prune -f
+            
+            echo "✅ Deployment completed successfully"
+
+      - name: Health Check
+        run: |
+          sleep 5
+          curl -f http://${{ secrets.VPS_HOST }}/health || exit 1
+
+      - name: Notify Success
+        if: success()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: '✅ Deployment to production successful!'
+            })

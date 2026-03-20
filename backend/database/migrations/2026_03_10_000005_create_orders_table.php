@@ -14,7 +14,15 @@ return new class extends Migration
             $table->foreignId('user_id')->constrained()->cascadeOnDelete();
             $table->foreignId('service_id')->constrained()->cascadeOnDelete();
             $table->foreignId('country_id')->constrained()->cascadeOnDelete();
-            $table->decimal('price', 10, 2);
+            $table->string('selected_operator')->nullable();
+            $table->decimal('price', 12, 2);
+            $table->decimal('provider_price_usd', 12, 4)->nullable();
+            $table->decimal('exchange_rate_used', 12, 4)->nullable();
+            $table->decimal('effective_exchange_rate', 12, 4)->nullable();
+            $table->string('global_markup_type_used', 20)->nullable();
+            $table->decimal('global_markup_value_used', 12, 4)->nullable();
+            $table->decimal('estimated_cost_ngn', 12, 2)->nullable();
+            $table->decimal('profit_amount', 12, 2)->nullable();
             $table->string('payment_reference')->nullable()->unique();
             $table->string('lendoverify_checkout_url')->nullable();
             $table->string('status')->default(OrderStatus::Pending->value);

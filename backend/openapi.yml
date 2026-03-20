@@ -42,6 +42,10 @@ tags:
     description: Purchase and manage SMS activations
   - name: Orders
     description: View order history
+  - name: Wallet
+    description: Manage account wallet balance and funding
+  - name: SMM
+    description: Purchase and manage social media marketing services
   - name: Admin – Services
     description: Manage the service catalog (admin only)
   - name: Admin – Countries
@@ -790,6 +794,270 @@ paths:
         '422':
           $ref: '#/components/responses/ValidationError'
 
+  # ── WALLET ──────────────────────────────────
+  /wallet/balance:
+    get:
+      tags: [Wallet]
+      summary: Get wallet balance
+      operationId: wallet.getBalance
+      security:
+        - BearerToken: []
+      responses:
+        '200':
+          description: Wallet balance retrieved
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WalletBalance'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+
+  /wallet/fund:
+    post:
+      tags: [Wallet]
+      summary: Initiate wallet funding
+      description: Creates a payment link via Lendoverify for wallet funding.
+      operationId: wallet.fund
+      security:
+        - BearerToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [amount]
+              properties:
+                amount:
+                  type: number
+                  format: double
+                  minimum: 100
+                  maximum: 5000000
+                  description: Amount in NGN
+            example:
+              amount: 50000
+      responses:
+        '201':
+          description: Funding initiated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WalletFundResponse'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+
+  /wallet/verify-funding:
+    post:
+      tags: [Wallet]
+      summary: Verify wallet funding payment
+      description: Confirms payment from Lendoverify and credits wallet.
+      operationId: wallet.verifyFunding
+      security:
+        - BearerToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reference]
+              properties:
+                reference:
+                  type: string
+                  description: Payment reference from Lendoverify
+            example:
+              reference: WALLET_123_abc456
+      responses:
+        '200':
+          description: Payment verified and wallet credited
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WalletVerifyResponse'
+        '402':
+          description: Payment not confirmed yet
+        '422':
+          $ref: '#/components/responses/ValidationError'
+
+  /wallet/transactions:
+    get:
+      tags: [Wallet]
+      summary: Get wallet transaction history
+      operationId: wallet.getTransactions
+      security:
+        - BearerToken: []
+      parameters:
+        - name: type
+          in: query
+          schema:
+            type: string
+            enum: [debit, credit]
+          description: Filter by transaction type
+        - name: period
+          in: query
+          schema:
+            type: string
+            enum: [all, today, week, month]
+          description: Filter by period
+        - name: per_page
+          in: query
+          schema:
+            type: integer
+            default: 20
+      responses:
+        '200':
+          description: Transaction history retrieved
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TransactionHistory'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+
+  # ── SMM SERVICES ────────────────────────────
+  /smm/services:
+    get:
+      tags: [SMM]
+      summary: List SMM services
+      description: Browse all available SMM services from CrestPanel.
+      operationId: smm.listServices
+      security:
+        - BearerToken: []
+      parameters:
+        - name: category
+          in: query
+          schema:
+            type: string
+          description: Filter by service category
+        - name: type
+          in: query
+          schema:
+            type: string
+          description: Filter by service type
+        - name: per_page
+          in: query
+          schema:
+            type: integer
+            default: 50
+      responses:
+        '200':
+          description: SMM services list
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SmmServiceList'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+
+  /smm/services/{serviceId}:
+    get:
+      tags: [SMM]
+      summary: Get SMM service details
+      operationId: smm.getService
+      security:
+        - BearerToken: []
+      parameters:
+        - name: serviceId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Service details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SmmService'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # ── SMM ORDERS ──────────────────────────────
+  /smm/orders:
+    post:
+      tags: [SMM]
+      summary: Create SMM order
+      description: Purchase and create a new SMM service order. Deducts cost from wallet.
+      operationId: smm.createOrder
+      security:
+        - BearerToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateSmmOrderRequest'
+            example:
+              smm_service_id: 1
+              link: https://www.instagram.com/username
+              quantity: 100
+      responses:
+        '201':
+          description: Order created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SmmOrderResponse'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+
+    get:
+      tags: [SMM]
+      summary: List user's SMM orders
+      operationId: smm.listOrders
+      security:
+        - BearerToken: []
+      parameters:
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [Pending, In progress, Partial, Completed, Failed, Cancelled]
+        - name: per_page
+          in: query
+          schema:
+            type: integer
+            default: 20
+      responses:
+        '200':
+          description: User's SMM orders
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SmmOrderList'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+
+  /smm/orders/{orderId}:
+    get:
+      tags: [SMM]
+      summary: Get SMM order details
+      description: Retrieve order details with real-time status from CrestPanel.
+      operationId: smm.getOrder
+      security:
+        - BearerToken: []
+      parameters:
+        - name: orderId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Order details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SmmOrderDetail'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
   # ── WEBHOOKS ─────────────────────────────────
   /webhooks/lendoverify:
     post:
@@ -1328,6 +1596,270 @@ components:
           $ref: '#/components/schemas/PaginationLinks'
         meta:
           $ref: '#/components/schemas/PaginationMeta'
+
+    # ── WALLET ──────────────────────────────────
+    WalletBalance:
+      type: object
+      properties:
+        balance:
+          type: string
+          format: decimal
+          example: "150000.00"
+        currency:
+          type: string
+          example: NGN
+
+    WalletFundResponse:
+      type: object
+      properties:
+        message:
+          type: string
+          example: Wallet funding initiated. Please complete payment.
+        checkout_url:
+          type: string
+          format: url
+          example: https://checkout.lendoverify.com/...
+        amount:
+          type: number
+          format: double
+          example: 50000
+        currency:
+          type: string
+          example: NGN
+        reference:
+          type: string
+          example: WALLET_123_abc456
+        fund_id:
+          type: string
+          example: WALLET_123_abc456
+
+    WalletVerifyResponse:
+      type: object
+      properties:
+        message:
+          type: string
+          example: Wallet funded successfully.
+        amount_credited:
+          type: number
+          format: double
+          example: 50000
+        new_balance:
+          type: string
+          format: decimal
+          example: "200000.00"
+        currency:
+          type: string
+          example: NGN
+
+    TransactionHistory:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            type: object
+            properties:
+              id:
+                type: integer
+              type:
+                type: string
+                enum: [debit, credit]
+              operation:
+                type: string
+                example: wallet_debit
+              amount:
+                type: string
+                format: decimal
+              reference:
+                type: string
+              description:
+                type: string
+              status:
+                type: string
+              created_at:
+                type: string
+                format: date-time
+        pagination:
+          $ref: '#/components/schemas/PaginationData'
+
+    # ── SMM SERVICES ────────────────────────────
+    SmmService:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 1
+        crestpanel_id:
+          type: string
+          example: "17009"
+        name:
+          type: string
+          example: Facebook Followers
+        category:
+          type: string
+          example: Facebook Services
+        type:
+          type: string
+          example: Default
+        rate:
+          type: string
+          format: decimal
+          example: "1992.4700"
+        min:
+          type: integer
+          example: 10
+        max:
+          type: integer
+          example: 100000
+        refill:
+          type: boolean
+          example: false
+        cancel:
+          type: boolean
+          example: true
+        final_price_ngn:
+          type: string
+          format: decimal
+          example: "3500.00"
+
+    SmmServiceList:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/SmmService'
+        pagination:
+          $ref: '#/components/schemas/PaginationData'
+
+    CreateSmmOrderRequest:
+      type: object
+      required: [smm_service_id, link, quantity]
+      properties:
+        smm_service_id:
+          type: integer
+          example: 1
+        link:
+          type: string
+          format: url
+          example: https://www.instagram.com/username
+        quantity:
+          type: integer
+          minimum: 1
+          example: 100
+        runs:
+          type: integer
+          nullable: true
+          example: null
+        interval:
+          type: integer
+          nullable: true
+          example: null
+        comments:
+          type: string
+          nullable: true
+          example: null
+
+    SmmOrderResponse:
+      type: object
+      properties:
+        message:
+          type: string
+          example: Order created successfully.
+        order:
+          type: object
+          properties:
+            id:
+              type: integer
+            crestpanel_order_id:
+              type: string
+            service_name:
+              type: string
+            link:
+              type: string
+            quantity:
+              type: integer
+            total_cost_ngn:
+              type: string
+              format: decimal
+            status:
+              type: string
+            created_at:
+              type: string
+              format: date-time
+        remaining_balance:
+          type: string
+          format: decimal
+
+    SmmOrderList:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            type: object
+            properties:
+              id:
+                type: integer
+              crestpanel_order_id:
+                type: string
+              service_name:
+                type: string
+              link:
+                type: string
+              quantity:
+                type: integer
+              total_cost_ngn:
+                type: string
+                format: decimal
+              status:
+                type: string
+              created_at:
+                type: string
+                format: date-time
+        pagination:
+          $ref: '#/components/schemas/PaginationData'
+
+    SmmOrderDetail:
+      type: object
+      properties:
+        id:
+          type: integer
+        crestpanel_order_id:
+          type: string
+        service:
+          type: object
+          properties:
+            id:
+              type: integer
+            name:
+              type: string
+        link:
+          type: string
+        quantity:
+          type: integer
+        total_cost_ngn:
+          type: string
+          format: decimal
+        charge_ngn:
+          type: string
+          format: decimal
+          nullable: true
+        status:
+          type: string
+          enum: [Pending, In progress, Partial, Completed, Failed, Cancelled]
+        remains:
+          type: integer
+          nullable: true
+        start_count:
+          type: integer
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
 
   # ── RESPONSES ───────────────────────────────
   responses:

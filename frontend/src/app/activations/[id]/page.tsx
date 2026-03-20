@@ -79,7 +79,7 @@ export default function ActivationDetailPage() {
     fetchActivation();
   }, [fetchActivation]);
 
-  // Poll for SMS updates
+  // Poll for SMS updates every 1.5 seconds for real-time delivery
   useEffect(() => {
     if (!activation) return;
     const terminal = ['completed', 'expired', 'cancelled', 'sms_received'];
@@ -97,7 +97,7 @@ export default function ActivationDetailPage() {
       } catch {
         // silent
       }
-    }, 3000);
+    }, 1500);
 
     return () => clearInterval(interval);
   }, [activation, id]);
@@ -269,7 +269,7 @@ export default function ActivationDetailPage() {
                                 </span>
                             </div>
                             <p className="text-indigo-900 font-bold animate-pulse">Waiting for SMS...</p>
-                            <p className="text-xs text-indigo-500 mt-1 font-medium">Auto-refreshing every 3s</p>
+                            <p className="text-xs text-indigo-500 mt-1 font-medium">Live-checking every 1.5s</p>
                         </div>
                     ) : (
                         <div className="text-center py-6 bg-slate-50 rounded-xl border border-slate-200">

@@ -16,12 +16,21 @@ class Service extends Model
         'name',
         'slug',
         'provider_service_code',
+        'provider_category',
+        'provider_qty',
+        'provider_base_price',
+        'provider_payload',
+        'last_synced_at',
         'is_active',
     ];
 
     protected function casts(): array
     {
         return [
+            'provider_qty' => 'integer',
+            'provider_base_price' => 'decimal:4',
+            'provider_payload' => 'array',
+            'last_synced_at' => 'datetime',
             'is_active' => 'boolean',
         ];
     }

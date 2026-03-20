@@ -21,15 +21,7 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->statefulApi();
     })
     ->withSchedule(function (Schedule $schedule) {
-        // Clear sync lock every 30 mins
-        $schedule->call(fn() => \Illuminate\Support\Facades\Cache::forget('sync_in_progress'))->everyThirtyMinutes();
-        
-        // Auto-sync prices from 5Sim hourly
-        $schedule->job(new \App\Jobs\SyncAllPricingJob)->hourly();
-        
-        // Clear expired activations and check for SMS
-        $schedule->job(new \App\Jobs\ExpireActivationsJob)->everyMinute();
-        $schedule->job(new \App\Jobs\CheckAllActiveSmsJob)->everyMinute();
+        // All schedule definitions are in routes/console.php
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         //

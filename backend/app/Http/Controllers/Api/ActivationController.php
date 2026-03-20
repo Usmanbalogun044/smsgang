@@ -29,29 +29,78 @@ class ActivationController extends Controller
 
     public function buy(BuyActivationRequest $request): JsonResponse
     {
-        $service = Service::findOrFail($request->service_id);
-        $country = Country::findOrFail($request->country_id);
+        try {
+            $service = Service::findOrFail($request->service_id);
+            $country = Country::findOrFail($request->country_id);
+            $user = $request->user();
+            $price = (float) $service->price;
 
-        $order = $this->activationService->initiatePurchase(
-            user: $request->user(),
-            service: $service,
-            country: $country,
-        );
+            // Get or create user's wallet
+            $wallet = $user->wallet()->firstOrCreate(
+                ['user_id' => $user->id],
+                ['balance' => 0]
+            );
 
-        Log::channel('activity')->info('Activation purchase initiated', [
-            'user_id' => $request->user()->id,
-            'order_id' => $order->id,
-            'service' => $service->name,
-            'country' => $country->name,
-            'price' => $order->price,
-        ]);
+            // Check wallet balance
+            if ($wallet->balance < $price) {
+                return response()->json([
+                    'message' => 'Insufficient wallet balance.',
+                    'error' => 'insufficient_balance',
+                    'required' => $price,
+                    'available' => $wallet->balance,
+                    'deficit' => $price - $wallet->balance,
+                ], 422);
+            }
 
-        return response()->json([
-            'message' => 'Order initiated. Please complete payment.',
-            'order' => new OrderResource($order->load(['service', 'country'])),
-            'checkout_url' => $order->lendoverify_checkout_url,
-            'payment_gateway_link' => $order->lendoverify_checkout_url,
-        ], 201);
+            // Create order immediately (no payment pending state)
+            $order = $this->activationService->initiatePurchase(
+                $user,
+                $service,
+                $country,
+                (string) $request->input('operator'),
+            );
+
+            // Deduct from wallet
+            $wallet->deductBalance($price);
+
+            // Create transaction record
+            Transaction::create([
+                'user_id' => $user->id,
+                'order_id' => $order->id,
+                'amount' => $price,
+                'type' => 'debit',
+                'operation_type' => 'wallet_debit',
+                'status' => 'paid',
+                'reference' => "order_{$order->id}",
+                'description' => "SMS activation for {$service->name} ({$country->name})",
+            ]);
+
+            Log::channel('activity')->info('SMS activation purchased via wallet', [
+                'user_id' => $user->id,
+                'order_id' => $order->id,
+                'service' => $service->name,
+                'country' => $country->name,
+                'price' => $price,
+                'remaining_balance' => $wallet->fresh()->balance,
+            ]);
+
+            return response()->json([
+                'message' => 'Order created. Activation in progress.',
+                'order' => new OrderResource($order->load(['service', 'country', 'activation'])),
+                'remaining_balance' => $wallet->fresh()->balance,
+            ], 201);
+        } catch (Throwable $e) {
+            Log::error('Activation purchase error', [
+                'user_id' => $request->user()?->id,
+                'error' => $e->getMessage(),
+                'exception' => get_class($e),
+            ]);
+            
+            return response()->json([
+                'message' => $e->getMessage() ?: 'Failed to process your request. Please try again.',
+                'error' => 'purchase_failed',
+            ], 422);
+        }
     }
 
     public function verifyPayment(Request $request, Order $order): JsonResponse

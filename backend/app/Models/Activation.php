@@ -16,6 +16,7 @@ class Activation extends Model
         'service_id',
         'country_id',
         'provider',
+        'provider_operator',
         'provider_activation_id',
         'phone_number',
         'sms_code',

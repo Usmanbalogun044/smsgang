@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import toast from 'react-hot-toast';
 import api from '@/lib/api';
+import useRealtimeRefresh from '@/hooks/useRealtimeRefresh';
 import type { Order } from '@/lib/types';
 
 const statusTone: Record<string, string> = {
@@ -34,6 +35,15 @@ export default function AdminOrderDetailsPage() {
       })
       .finally(() => setLoading(false));
   }, [params.id, router]);
+
+  useRealtimeRefresh(() => {
+    if (!params.id) return;
+
+    api
+      .get(`/admin/orders/${params.id}`)
+      .then(({ data }) => setOrder(data.data ?? data))
+      .catch(() => undefined);
+  });
 
   const timeline = useMemo(() => {
     if (!order) return [];

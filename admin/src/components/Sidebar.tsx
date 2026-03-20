@@ -7,10 +7,14 @@ import { useAuthStore } from '@/store/auth';
 const navItems = [
   { href: '/dashboard', label: 'Dashboard', icon: 'dashboard' },
   { href: '/services', label: 'Services', icon: 'inventory_2' },
+  { href: '/countries', label: 'Countries', icon: 'public' },
+  { href: '/operators', label: 'Operators', icon: 'sim_card' },
   { href: '/activations', label: 'Activations', icon: 'bolt' },
   { href: '/orders', label: 'Orders', icon: 'history' },
   { href: '/transactions', label: 'Transactions', icon: 'payments' },
   { href: '/users', label: 'Users', icon: 'group' },
+  { href: '/smm/services', label: 'SMM Services', icon: 'trending_up' },
+  { href: '/smm/orders', label: 'SMM Orders', icon: 'assignment' },
   { href: '/settings', label: 'Settings', icon: 'settings' },
 ];
 

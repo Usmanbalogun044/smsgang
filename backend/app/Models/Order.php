@@ -16,6 +16,7 @@ class Order extends Model
         'user_id',
         'service_id',
         'country_id',
+        'selected_operator',
         'price',
         'provider_price_usd',
         'exchange_rate_used',

@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from 'react';
 import api from '@/lib/api';
 import toast from 'react-hot-toast';
 import Pagination from '@/components/Pagination';
+import useRealtimeRefresh from '@/hooks/useRealtimeRefresh';
 import type { Order, PaginatedResponse } from '@/lib/types';
 
 const statusStyles: Record<string, string> = {
@@ -23,15 +24,28 @@ export default function OrdersPage() {
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
 
-  const fetchOrders = (page = 1) => {
-    setLoading(true);
+  const fetchOrders = (page = 1, silent = false) => {
+    if (!silent) {
+      setLoading(true);
+    }
+
     api.get<PaginatedResponse<Order>>(`/admin/orders?page=${page}`)
       .then(({ data }) => { setOrders(data.data); setMeta(data.meta); })
-      .catch(() => toast.error('Failed to load orders'))
-      .finally(() => setLoading(false));
+      .catch(() => {
+        if (!silent) {
+          toast.error('Failed to load orders');
+        }
+      })
+      .finally(() => {
+        if (!silent) {
+          setLoading(false);
+        }
+      });
   };
 
   useEffect(() => { fetchOrders(); }, []);
+
+  useRealtimeRefresh(() => fetchOrders(meta.current_page || 1, true));
 
   const filteredOrders = useMemo(() => {
     const query = search.trim().toLowerCase();
@@ -233,7 +247,7 @@ export default function OrdersPage() {
             <span>
               Showing {filteredOrders.length} of {meta.total.toLocaleString()} orders
             </span>
-            <Pagination currentPage={meta.current_page} lastPage={meta.last_page} onPageChange={fetchOrders} />
+            <Pagination currentPage={meta.current_page} lastPage={meta.last_page} onPageChange={(page) => fetchOrders(page, false)} />
           </div>
         </div>
 

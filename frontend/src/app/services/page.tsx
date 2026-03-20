@@ -43,10 +43,63 @@ export default function ServicesPage() {
   const [countries, setCountries] = useState<ServicePrice[]>([]);
   const [loadingCountries, setLoadingCountries] = useState(false);
   const [selectedCountry, setSelectedCountry] = useState<ServicePrice | null>(null);
+  const [modalSearch, setModalSearch] = useState('');
+  const [selectedOperator, setSelectedOperator] = useState<string | null>(null);
   const [buying, setBuying] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const { user, loading: authLoading } = useAuthStore();
   const router = useRouter();
+
+  // Flatten all operators from all countries
+  interface OperatorOption {
+    id: string;
+    country_id: number;
+    country_name: string;
+    country_code: string;
+    country_flag: string;
+    operator_name: string;
+    cost_usd: number;
+    final_price: number;
+    stock_count: number;
+    service_id: number;
+  }
+
+  const allOperators = useMemo(() => {
+    const flattened: OperatorOption[] = [];
+    countries.forEach((sp) => {
+      (sp.operators ?? []).forEach((op) => {
+        flattened.push({
+          id: `${sp.id}:${op.name}`,
+          country_id: sp.country.id,
+          country_name: sp.country.name,
+          country_code: sp.country.code,
+          country_flag: sp.country.flag || '🌍',
+          operator_name: op.name,
+          cost_usd: op.cost,
+          final_price: op.final_price,
+          stock_count: op.count,
+          service_id: sp.service.id,
+        });
+      });
+    });
+    return flattened;
+  }, [countries]);
+
+  // Filter operators by search
+  const filteredOperators = useMemo(() => {
+    if (!modalSearch) return allOperators;
+    const q = modalSearch.toLowerCase();
+    return allOperators.filter(op =>
+      op.country_name.toLowerCase().includes(q) ||
+      op.country_code.toLowerCase().includes(q) ||
+      op.operator_name.toLowerCase().includes(q)
+    );
+  }, [allOperators, modalSearch]);
+
+  // Sort operators by price
+  const sortedOperators = useMemo(() => {
+    return [...filteredOperators].sort((a, b) => a.final_price - b.final_price);
+  }, [filteredOperators]);
 
   useEffect(() => {
     if (!authLoading && !user) router.push('/login');
@@ -95,17 +148,25 @@ export default function ServicesPage() {
 
   const closeSelection = () => {
     setSelected(null);
+    setModalSearch('');
+    setSelectedOperator(null);
     document.body.style.overflow = '';
   };
 
   const handleBuy = async () => {
     if (!user) { router.push('/login'); return; }
-    if (!selectedCountry) return;
+    if (!selectedOperator) return;
+    
+    // Find the operator object to get service and country IDs
+    const operator = sortedOperators.find(op => op.id === selectedOperator);
+    if (!operator) return;
+
     setBuying(true);
     try {
       const { data } = await api.post('/activations/buy', {
-        service_id: selectedCountry.service.id, // Using the correct ID from relation
-        country_id: selectedCountry.country.id,
+        service_id: operator.service_id,
+        country_id: operator.country_id,
+        operator: operator.operator_name,
       });
       const url =
         data.payment_gateway_link
@@ -288,49 +349,81 @@ export default function ServicesPage() {
 
                   {/* Content Body */}
                   <div className="flex-1 min-h-0 flex flex-col md:flex-row bg-slate-50/50">
-                    {/* Left: Country Selection */}
-                    <div className="flex-1 min-h-0 overflow-y-auto p-4 md:p-6 md:border-r border-slate-200">
-                      <label className="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-3 sticky top-0 bg-slate-50/95 backdrop-blur py-2 z-10 w-full">
-                        1. Select Country
-                      </label>
+                    {/* Left: Operators Selection */}
+                    <div className="flex-1 min-h-0 overflow-y-auto p-4 md:p-6 md:border-r border-slate-200 flex flex-col">
+                      <div className="sticky top-0 bg-slate-50/95 backdrop-blur py-2 z-10 mb-3 -mx-4 md:-mx-6 px-4 md:px-6">
+                        <label className="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-3">
+                          1. Search & Select Operator
+                        </label>
+                        <div className="relative">
+                          <span className="material-icons absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-lg">
+                            search
+                          </span>
+                          <input
+                            type="text"
+                            placeholder="Search country, code, or operator..."
+                            value={modalSearch}
+                            onChange={(e) => setModalSearch(e.target.value)}
+                            className="w-full pl-10 pr-4 py-2.5 bg-white border border-slate-200 rounded-lg text-sm text-slate-700 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-[#0f6df0]/20 focus:border-[#0f6df0]"
+                          />
+                          {modalSearch && (
+                            <button
+                              onClick={() => setModalSearch('')}
+                              className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                            >
+                              <span className="material-icons text-base">close</span>
+                            </button>
+                          )}
+                        </div>
+                      </div>
 
                       {loadingCountries ? (
                         <div className="space-y-3">
                           {[1, 2, 3, 4].map((i) => (
-                            <div key={i} className="h-16 bg-white rounded-xl border border-slate-200 animate-pulse" />
+                            <div key={i} className="h-20 bg-white rounded-xl border border-slate-200 animate-pulse" />
                           ))}
                         </div>
-                      ) : countries.length === 0 ? (
+                      ) : sortedOperators.length === 0 ? (
                         <div className="flex flex-col items-center justify-center py-12 text-center">
-                          <span className="material-symbols-outlined text-4xl text-slate-300 mb-2">public_off</span>
-                          <p className="text-slate-500 font-medium">No countries available</p>
-                          <p className="text-xs text-slate-400">Try again later.</p>
+                          <span className="material-icons text-4xl text-slate-300 mb-2">public_off</span>
+                          <p className="text-slate-500 font-medium">No operators found</p>
+                          <p className="text-xs text-slate-400">{modalSearch ? `Try a different search` : 'Try again later'}</p>
                         </div>
                       ) : (
                         <div className="grid grid-cols-1 gap-2 pb-4">
-                          {countries.map((sp) => (
+                          {sortedOperators.map((op) => (
                             <button
-                              key={sp.id}
-                              onClick={() => setSelectedCountry(sp)}
+                              key={op.id}
+                              onClick={() => setSelectedOperator(op.id)}
+                              disabled={op.stock_count <= 0}
                               className={`
-                                group flex items-center justify-between p-3 md:p-4 rounded-xl border transition-all relative overflow-hidden
-                                ${selectedCountry?.id === sp.id
+                                group flex items-center justify-between p-3 md:p-4 rounded-xl border transition-all relative overflow-hidden disabled:opacity-50 disabled:cursor-not-allowed
+                                ${selectedOperator === op.id
                                   ? 'bg-white border-[#0f6df0] shadow-[0_0_0_1px_#0f6df0] z-10'
                                   : 'bg-white border-slate-200 hover:border-[#0f6df0] hover:shadow-md'
                                 }
                               `}
                             >
-                              <div className="flex items-center gap-3 md:gap-4 relative z-10">
-                                <span className="text-2xl md:text-3xl">{sp.country.flag}</span>
-                                <div className="text-left">
-                                  <p className="font-bold text-slate-900 text-sm md:text-base">{sp.country.name}</p>
-                                  <p className="text-[10px] md:text-xs text-slate-400 font-medium uppercase tracking-wide">{sp.country.code}</p>
+                              <div className="flex items-center gap-3 md:gap-4 relative z-10 flex-1 min-w-0">
+                                <span className="text-2xl md:text-3xl flex-shrink-0">{op.country_flag}</span>
+                                <div className="text-left min-w-0">
+                                  <p className="font-bold text-slate-900 text-sm md:text-base">{op.country_name}</p>
+                                  <div className="flex items-center gap-2 mt-1">
+                                    <span className="text-[10px] md:text-xs text-slate-400 font-medium uppercase tracking-wide">{op.country_code}</span>
+                                    <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 text-[10px] md:text-xs font-semibold">
+                                      {op.operator_name}
+                                    </span>
+                                  </div>
                                 </div>
                               </div>
-                              <div className="text-right relative z-10">
-                                <p className="font-black text-[#0f6df0] text-sm md:text-lg">₦{Number(sp.final_price).toLocaleString()}</p>
-                                <p className="text-[10px] text-emerald-600 font-bold bg-emerald-50 px-1.5 rounded-md inline-block">
-                                  {(sp.available_count ?? 0) > 50 ? '50+ numbers' : `${sp.available_count ?? 0} numbers`}
+                              <div className="text-right relative z-10 flex-shrink-0 ml-2">
+                                <p className="font-black text-[#0f6df0] text-sm md:text-lg">₦{Number(op.final_price).toLocaleString()}</p>
+                                <p className={`text-[10px] md:text-xs font-bold px-1.5 py-0.5 rounded-md inline-block mt-1 ${
+                                  op.stock_count > 0
+                                    ? 'bg-emerald-50 text-emerald-600'
+                                    : 'bg-red-50 text-red-600'
+                                }`}>
+                                  {op.stock_count > 0 ? `${op.stock_count} in stock` : 'Out of stock'}
                                 </p>
                               </div>
                             </button>
@@ -354,23 +447,33 @@ export default function ServicesPage() {
                               {selected.name}
                             </span>
                           </div>
-                          <div className="flex justify-between items-center text-sm">
-                            <span className="text-slate-500">Country</span>
-                            <span className="font-bold text-slate-900">
-                              {selectedCountry ? selectedCountry.country.name : 'Not selected'}
-                            </span>
-                          </div>
-                          <div className="flex justify-between items-center text-sm">
-                            <span className="text-slate-500">Stock</span>
-                            <span className="font-bold text-slate-900">
-                              {selectedCountry ? `${selectedCountry.available_count ?? 0} available` : '—'}
-                            </span>
-                          </div>
+                          {selectedOperator && sortedOperators.find(op => op.id === selectedOperator) && (
+                            <>
+                              <div className="flex justify-between items-center text-sm">
+                                <span className="text-slate-500">Country</span>
+                                <span className="font-bold text-slate-900">
+                                  {sortedOperators.find(op => op.id === selectedOperator)?.country_name}
+                                </span>
+                              </div>
+                              <div className="flex justify-between items-center text-sm">
+                                <span className="text-slate-500">Operator</span>
+                                <span className="font-bold text-slate-900">
+                                  {sortedOperators.find(op => op.id === selectedOperator)?.operator_name}
+                                </span>
+                              </div>
+                              <div className="flex justify-between items-center text-sm">
+                                <span className="text-slate-500">Stock</span>
+                                <span className="font-bold text-slate-900">
+                                  {sortedOperators.find(op => op.id === selectedOperator)?.stock_count} available
+                                </span>
+                              </div>
+                            </>
+                          )}
                           <div className="h-px bg-slate-200 my-2" />
                           <div className="flex justify-between items-center">
                             <span className="font-bold text-slate-700">Total</span>
                             <span className="font-black text-xl text-[#0f6df0]">
-                              {selectedCountry ? `₦${Number(selectedCountry.final_price).toLocaleString()}` : '₦0'}
+                              {selectedOperator ? `₦${Number(sortedOperators.find(op => op.id === selectedOperator)?.final_price ?? 0).toLocaleString()}` : '₦0'}
                             </span>
                           </div>
                         </div>
@@ -378,7 +481,7 @@ export default function ServicesPage() {
 
                       <button
                         onClick={handleBuy}
-                        disabled={!selectedCountry || buying}
+                        disabled={!selectedOperator || buying}
                         className="w-full py-3.5 bg-[#0f6df0] hover:bg-[#0d5ed9] text-white rounded-xl font-bold text-base shadow-lg shadow-[#0f6df0]/25 disabled:opacity-50 disabled:shadow-none transition-all flex items-center justify-center gap-2 active:scale-95"
                       >
                         {buying ? (
