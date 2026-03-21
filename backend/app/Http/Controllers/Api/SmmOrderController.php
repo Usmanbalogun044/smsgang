@@ -49,22 +49,23 @@ class SmmOrderController extends Controller
 
             // Calculate price
             $priceData = $this->smmPricingService->calculatePrice($service, $validated['quantity']);
+            $finalPriceNgn = $priceData['total_price'];
 
             // Check wallet balance
             $wallet = $this->walletService->getOrCreateWallet($user);
-            if ($wallet->balance < $priceData['final_price_ngn']) {
+            if ($wallet->balance < $finalPriceNgn) {
                 return response()->json([
                     'message' => 'Insufficient wallet balance.',
                     'error' => 'insufficient_balance',
-                    'required' => $priceData['final_price_ngn'],
+                    'required' => $finalPriceNgn,
                     'available' => $wallet->balance,
-                    'deficit' => $priceData['final_price_ngn'] - $wallet->balance,
+                    'deficit' => $finalPriceNgn - $wallet->balance,
                 ], 422);
             }
 
             // Create order on CrestPanel
-            $cpOrder = $this->crestPanelService->createOrder([
-                'service_id' => $service->crestpanel_service_id,
+            $cpOrder = $this->crestPanelService->addOrder([
+                'service' => $service->crestpanel_service_id,
                 'link' => $validated['link'],
                 'quantity' => $validated['quantity'],
                 'runs' => $validated['runs'] ?? null,
@@ -72,9 +73,9 @@ class SmmOrderController extends Controller
                 'comments' => $validated['comments'] ?? null,
             ]);
 
-            if (!$cpOrder || isset($cpOrder['error'])) {
+            if (!$cpOrder || isset($cpOrder->error) || !isset($cpOrder->order)) {
                 return response()->json([
-                    'message' => 'Failed to create order on CrestPanel.',
+                    'message' => 'Failed to create order on CrestPanel: ' . ($cpOrder->error ?? 'Unknown error'),
                     'error' => 'provider_error',
                 ], 422);
             }
@@ -83,19 +84,16 @@ class SmmOrderController extends Controller
             $order = SmmOrder::create([
                 'user_id' => $user->id,
                 'smm_service_id' => $service->id,
-                'crestpanel_order_id' => $cpOrder['order'] ?? uniqid(),
+                'crestpanel_order_id' => $cpOrder->order,
                 'link' => $validated['link'],
                 'quantity' => $validated['quantity'],
                 'runs' => $validated['runs'] ?? null,
                 'interval' => $validated['interval'] ?? null,
                 'comments' => $validated['comments'] ?? null,
-                'price_per_unit' => $priceData['final_price_ngn'] / $validated['quantity'],
+                'price_per_unit' => $priceData['rate_per_unit'],
                 'total_units' => $validated['quantity'],
-                'total_cost_ngn' => $priceData['final_price_ngn'],
-                'exchange_rate_used' => $priceData['exchange_rate'],
-                'markup_type_used' => $priceData['markup_type'],
-                'markup_value_used' => $priceData['markup_value'],
-                'provider_payload' => $cpOrder,
+                'total_cost_ngn' => $finalPriceNgn,
+                'provider_payload' => (array) $cpOrder,
                 'status' => 'Pending',
             ]);
 

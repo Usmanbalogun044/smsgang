@@ -153,10 +153,10 @@ export default function SmmServicesPage() {
                   </p>
                   <div className="mt-4 pt-4 border-t border-slate-200 dark:border-slate-700">
                     <p className="text-xs text-slate-600 dark:text-slate-400 mb-2">
-                      Price (per 1 unit)
+                      Price (per 1,000 units)
                     </p>
                     <p className="text-sm font-semibold text-slate-900 dark:text-white">
-                      {formatMoney(service.final_price)}
+                      {formatMoney(service.final_price * 1000)}
                     </p>
                   </div>
                 </button>
@@ -200,12 +200,12 @@ export default function SmmServicesPage() {
             </div>
 
             <div className="bg-blue-50 dark:bg-slate-700 p-4 rounded-lg">
-              <p className="text-sm text-slate-600 dark:text-slate-300 mb-2">Price per Unit (₦)</p>
+              <p className="text-sm text-slate-600 dark:text-slate-300 mb-2">Price per 1,000 (₦)</p>
               <p className="text-3xl font-bold text-blue-600 dark:text-blue-400">
-                {formatMoney(selectedService.final_price)}
+                {formatMoney(selectedService.final_price * 1000)}
               </p>
               <p className="text-xs text-slate-500 dark:text-slate-400 mt-2">
-                You will be charged this amount multiplied by the quantity you enter
+                Total = (Price / 1000) × Quantity
               </p>
             </div>
 
@@ -228,10 +228,10 @@ export default function SmmServicesPage() {
               <div className="bg-slate-100 dark:bg-slate-700 p-4 rounded-lg">
                 <div className="flex justify-between mb-2">
                   <span className="text-slate-600 dark:text-slate-300">
-                    {quantity} × {formatMoney(selectedService.final_price)}
+                    Total cost for {quantity} units
                   </span>
                   <span className="font-bold text-slate-900 dark:text-white">
-                    {formatMoney(Number(quantity) * selectedService.final_price)}
+                    {formatMoney((selectedService.final_price * 1000) * (Number(quantity) / 1000))}
                   </span>
                 </div>
               </div>

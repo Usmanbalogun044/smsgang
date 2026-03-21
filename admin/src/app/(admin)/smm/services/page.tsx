@@ -121,9 +121,9 @@ export default function AdminSmmServicesPage() {
                   <tr>
                     <th className="px-6 py-3 text-left text-sm font-semibold text-slate-900 dark:text-white">Service Name</th>
                     <th className="px-6 py-3 text-left text-sm font-semibold text-slate-900 dark:text-white">Quantity Range</th>
-                    <th className="px-6 py-3 text-left text-sm font-semibold text-slate-900 dark:text-white">Rate (NGN)</th>
-                    <th className="px-6 py-3 text-left text-sm font-semibold text-slate-900 dark:text-white">Final Price (NGN)</th>
-                    <th className="px-6 py-3 text-left text-sm font-semibold text-slate-900 dark:text-white">Markup</th>
+                    <th className="px-6 py-3 text-left text-sm font-semibold text-slate-900 dark:text-white">Rate (per 1k)</th>
+                    <th className="px-6 py-3 text-left text-sm font-semibold text-slate-900 dark:text-white">Selling Price (per 1k)</th>
+                    <th className="px-6 py-3 text-left text-sm font-semibold text-slate-900 dark:text-white">Markup Applied</th>
                     <th className="px-6 py-3 text-left text-sm font-semibold text-slate-900 dark:text-white">Status</th>
                     <th className="px-6 py-3 text-left text-sm font-semibold text-slate-900 dark:text-white">Action</th>
                   </tr>
@@ -141,7 +141,7 @@ export default function AdminSmmServicesPage() {
                         {formatMoney(service.smm_service?.rate || 0)}
                       </td>
                       <td className="px-6 py-4 text-sm font-bold text-blue-600">
-                        {formatMoney(service.final_price)}
+                        {formatMoney((service.final_price || service.rate_per_unit) * 1000)}
                       </td>
                       <td className="px-6 py-4 text-sm text-slate-600 dark:text-slate-400">
                         {service.markup_type === 'Fixed' ? `Fixed ${formatMoney(service.markup_value)}` : `${service.markup_value}%`}
