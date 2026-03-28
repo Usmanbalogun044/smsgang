@@ -144,8 +144,8 @@ jobs:
           host: ${{ secrets.VPS_HOST }}
           username: ${{ secrets.VPS_USER }}
           key: ${{ secrets.VPS_SSH_KEY }}
-          source: "backend/.env.production,backend/openapi.yml,backend/docker-compose.prod.yml,backend/server/default-production.conf,backend/Makefile,backend/scripts"
-          target: /home/${{ secrets.VPS_USER }}/smsgang
+          source: "backend/.env.production,backend/openapi.yml,backend/docker-compose.production.yml,backend/server/default-production.conf,backend/Makefile,backend/scripts"
+          target: /root/smsgang
           strip_components: 1
 
       - name: Deploy to VPS
@@ -164,32 +164,32 @@ jobs:
             echo $GH_PAT | docker login $REGISTRY -u ${{ github.actor }} --password-stdin
             
             # Navigate to deployment directory
-            mkdir -p /home/${{ secrets.VPS_USER }}/smsgang
-            cd /home/${{ secrets.VPS_USER }}/smsgang
+            mkdir -p /root/smsgang
+            cd /root/smsgang
             
             # Setup .env if not exists
             if [ ! -f .env ]; then
               cp .env.production .env
-              echo "⚠️  Created .env from .env.production - PLEASE UPDATE WITH PRODUCTION SECRETS"
+              echo "⚠️  Created .env from .env.production"
             fi
             
             # Pull latest image
-            docker compose -f docker-compose.prod.yml pull
+            docker compose -f docker-compose.production.yml pull
             
             # Stop and remove old containers
-            docker compose -f docker-compose.prod.yml down --remove-orphans
+            docker compose -f docker-compose.production.yml down --remove-orphans
             
             # Start new containers
-            docker compose -f docker-compose.prod.yml up -d
+            docker compose -f docker-compose.production.yml up -d
             
             # Wait for services to be healthy
             sleep 10
             
             # Run migrations
-            docker compose -f docker-compose.prod.yml exec -T app php artisan migrate --force
+            docker compose -f docker-compose.production.yml exec -T smsgangapp php artisan migrate --force
             
             # Optimize application
-            docker compose -f docker-compose.prod.yml exec -T app php artisan optimize
+            docker compose -f docker-compose.production.yml exec -T smsgangapp php artisan optimize
             
             # Clear old images
             docker image prune -f
