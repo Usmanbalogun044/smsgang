@@ -148,3 +148,8 @@ ps:
 
 stats:
 	docker stats
+
+# Production deployment
+deploy_production:
+	sudo chmod -R +x scripts
+	./scripts/production/index.sh

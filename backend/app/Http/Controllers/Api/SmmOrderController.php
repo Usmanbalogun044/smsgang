@@ -7,6 +7,7 @@ use App\Models\SmmOrder;
 use App\Models\SmmService;
 use App\Services\CrestPanelService;
 use App\Services\SmmPricingService;
+use App\Services\TelegramNotificationService;
 use App\Services\WalletService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -19,6 +20,7 @@ class SmmOrderController extends Controller
         private CrestPanelService $crestPanelService,
         private SmmPricingService $smmPricingService,
         private WalletService $walletService,
+        private TelegramNotificationService $telegramService,
     ) {}
 
     /**
@@ -149,6 +151,9 @@ class SmmOrderController extends Controller
                 'cost_ngn' => $priceData['total_price'],
                 'status' => 'pending_provider_confirmation → Pending (provider accepted)',
             ]);
+
+            // Send Telegram notification about the new order
+            $this->telegramService->sendSmmOrderNotification($order, $user, $service);
 
             return response()->json([
                 'message' => 'Order created and sent to provider successfully.',
