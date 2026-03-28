@@ -5,11 +5,16 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\SmmService;
 use App\Services\CrestPanelService;
+use App\Services\SmmPricingService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
 class SmmServiceController extends Controller
 {
+    public function __construct(
+        private SmmPricingService $smmPricingService,
+    ) {}
+
     /**
      * Get all active SMM services
      */
@@ -21,17 +26,10 @@ class SmmServiceController extends Controller
             $search = $request->query('search');
             $perPage = (int) $request->query('per_page', 50);
 
-            $query = SmmService::where('is_active', true)
-                ->with(['prices' => function ($q) {
-                    $q->where('is_active', true);
-                }]);
+            $query = SmmService::where('is_active', true);
 
             if ($category) {
-                $query->where('category', 'like', "%{$category}%");
-            }
-
-            if ($type) {
-                $query->where('type', $type);
+                $query->where('category', $category);
             }
 
             if ($search) {
@@ -40,33 +38,37 @@ class SmmServiceController extends Controller
 
             $services = $query->paginate($perPage);
 
+            $categories = SmmService::query()
+                ->where('is_active', true)
+                ->whereNotNull('category')
+                ->where('category', '!=', '')
+                ->distinct()
+                ->orderBy('category')
+                ->pluck('category')
+                ->values();
+
             return response()->json([
-                'data' => $services->map(fn ($service) => (
-                    $price = $service->prices->first()
-                ) ? [
-                    'id' => $price->id,
-                    'smm_service_id' => $service->id,
-                    'markup_type' => $price->markup_type,
-                    'markup_value' => (string) $price->markup_value,
-                    'final_price' => (string) $price->final_price,
-                    'is_active' => $price->is_active,
-                    'created_at' => $price->created_at,
-                    'smm_service' => [
+                'data' => $services->getCollection()->map(function ($service) {
+                    $priceData = $this->smmPricingService->calculatePrice($service, 1);
+
+                    return [
                         'id' => $service->id,
-                        'crestpanel_service_id' => $service->crestpanel_service_id,
                         'name' => $service->name,
                         'category' => $service->category,
                         'type' => $service->type,
-                        'rate' => (float) $service->rate,
-                        'rate_per_unit' => (float) $service->rate / 1000,
+                        'rate_per_1000' => (float) $service->rate,
+                        'rate_per_unit' => (float) $priceData['rate_per_unit'],
+                        'final_price' => (float) $priceData['rate_per_unit'],
+                        'final_price_per_1000' => (float) $priceData['final_price_per_1000'],
+                        'markup_type' => $priceData['markup_type'],
+                        'markup_value' => (float) $priceData['markup_value'],
                         'min' => $service->min,
                         'max' => $service->max,
                         'refill' => $service->refill,
                         'cancel' => $service->cancel,
-                        'is_active' => $service->is_active,
-                        'created_at' => $service->created_at,
-                    ],
-                ] : null)->filter(),
+                    ];
+                }),
+                'categories' => $categories,
                 'meta' => [
                     'total' => $services->total(),
                     'per_page' => $services->perPage(),
@@ -94,7 +96,7 @@ class SmmServiceController extends Controller
                 ], 404);
             }
 
-            $price = $service->getActivePrice();
+            $priceData = $this->smmPricingService->calculatePrice($service, 1);
 
             return response()->json([
                 'id' => $service->id,
@@ -102,14 +104,16 @@ class SmmServiceController extends Controller
                 'name' => $service->name,
                 'category' => $service->category,
                 'type' => $service->type,
-                'rate' => (string) $service->rate,
+                'rate_per_1000' => (float) $service->rate,
+                'rate_per_unit' => (float) $priceData['rate_per_unit'],
+                'final_price' => (float) $priceData['rate_per_unit'],
+                'final_price_per_1000' => (float) $priceData['final_price_per_1000'],
+                'markup_type' => $priceData['markup_type'],
+                'markup_value' => (float) $priceData['markup_value'],
                 'min' => $service->min,
                 'max' => $service->max,
                 'refill' => $service->refill,
                 'cancel' => $service->cancel,
-                'markup_type' => $price ? $price->markup_type : null,
-                'markup_value' => $price ? (string) $price->markup_value : null,
-                'final_price_ngn' => $price ? (string) $price->final_price : '0.00',
             ]);
         } catch (\Exception $e) {
             return response()->json([

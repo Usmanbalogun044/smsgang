@@ -6,9 +6,15 @@ use App\Models\User;
 use App\Models\Wallet;
 use App\Models\Transaction;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 
 class WalletService
 {
+    private function hasOperationTypeColumn(): bool
+    {
+        return Schema::hasColumn('transactions', 'operation_type');
+    }
+
     /**
      * Get or create user's wallet
      */
@@ -34,22 +40,37 @@ class WalletService
      */
     public function addFunds(User $user, float $amount, string $reference): Transaction
     {
-        $wallet = $this->getOrCreateWallet($user);
+        return DB::transaction(function () use ($user, $amount, $reference) {
+            // Idempotent by reference: repeated verify callbacks should not create duplicates
+            // or re-credit wallet balance.
+            $existing = Transaction::where('reference', $reference)->first();
 
-        $transaction = Transaction::create([
-            'user_id' => $user->id,
-            'amount' => $amount,
-            'type' => 'credit',
-            'operation_type' => 'wallet_fund',
-            'status' => 'paid',
-            'reference' => $reference,
-            'description' => "Wallet funding",
-            'gateway' => 'lendoverify',
-        ]);
+            if ($existing) {
+                return $existing;
+            }
 
-        $wallet->addBalance($amount);
+            $wallet = $this->getOrCreateWallet($user);
 
-        return $transaction;
+            $payload = [
+                'user_id' => $user->id,
+                'amount' => $amount,
+                'type' => 'credit',
+                'status' => 'paid',
+                'reference' => $reference,
+                'description' => 'Wallet funding',
+                'gateway' => 'lendoverify',
+            ];
+
+            if ($this->hasOperationTypeColumn()) {
+                $payload['operation_type'] = 'wallet_fund';
+            }
+
+            $transaction = Transaction::create($payload);
+
+            $wallet->addBalance($amount);
+
+            return $transaction;
+        });
     }
 
     /**
@@ -63,15 +84,20 @@ class WalletService
             return null; // Insufficient balance
         }
 
-        $transaction = Transaction::create([
+        $payload = [
             'user_id' => $user->id,
             'amount' => $amount,
             'type' => 'debit',
-            'operation_type' => 'wallet_debit',
             'status' => 'paid',
             'reference' => $reference,
             'description' => $description,
-        ]);
+        ];
+
+        if ($this->hasOperationTypeColumn()) {
+            $payload['operation_type'] = 'wallet_debit';
+        }
+
+        $transaction = Transaction::create($payload);
 
         $wallet->deductBalance($amount);
 
@@ -83,12 +109,17 @@ class WalletService
      */
     public function getTransactions(User $user, ?string $type = null, ?string $period = null, int $perPage = 20)
     {
-        $query = Transaction::where('user_id', $user->id)
-            ->where('operation_type', 'wallet_fund')
-            ->orWhere(function ($q) use ($user) {
-                $q->where('user_id', $user->id)
-                  ->where('operation_type', 'wallet_debit');
+        $query = Transaction::where('user_id', $user->id);
+
+        if ($this->hasOperationTypeColumn()) {
+            $query->where(function ($q) {
+                $q->where('operation_type', 'wallet_fund')
+                  ->orWhere('operation_type', 'wallet_debit');
             });
+        } else {
+            // Legacy schema fallback: wallet ledger is represented as credit/debit transaction types.
+            $query->whereIn('type', ['credit', 'debit']);
+        }
 
         if ($type) {
             $query->where('type', $type);

@@ -5,9 +5,7 @@ import Navbar from './Navbar';
 import Footer from './Footer';
 
 // Routes where the global Navbar and Footer should be hidden
-const HIDE_LAYOUT_ROUTES = ['/services', '/admin', '/dashboard', '/activations', '/orders', '/settings'];
-// Routes where we might want checks (like partial matches)
-const HIDE_LAYOUT_PREFIXES = ['/services', '/admin', '/dashboard', '/activations', '/orders', '/settings'];
+const HIDE_LAYOUT_PREFIXES = ['/services', '/virtual-numbers', '/admin', '/dashboard', '/activations', '/orders', '/settings', '/wallet', '/transactions', '/smm'];
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();

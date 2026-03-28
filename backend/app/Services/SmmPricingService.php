@@ -9,18 +9,9 @@ use Illuminate\Support\Facades\Log;
 
 class SmmPricingService
 {
-    private string $markupType;
-    private float $markupValue;
-    private float $globalMarkupFixed;
-    private string $globalMarkupType;
-
     public function __construct()
     {
-        // Get global SMM markup settings from database (Setting model)
-        $this->globalMarkupFixed = (float) Setting::get('smm_global_markup_fixed', 500); // Fixed NGN markup
-        $this->globalMarkupType = Setting::get('smm_global_markup_type', 'fixed'); // 'fixed' or 'percent'
-        $this->markupType = config('services.smm_markup_type', 'Fixed');
-        $this->markupValue = (float) config('services.smm_markup_value', 10); // 10% as individual markup
+        // No-op constructor kept for DI compatibility.
     }
 
     /**
@@ -28,58 +19,81 @@ class SmmPricingService
      */
     public function calculatePrice(SmmService $service, int $quantity = 1): array
     {
+        $quantity = max(1, $quantity);
+
         // CrestPanel rate is for 1,000 units. Convert to price per 1 unit.
         $rateInNgnPer1000 = (float) $service->rate;
         $pricePerUnit = $rateInNgnPer1000 / 1000;
         
-        // Final base cost before markup
+        // Cost of the request before any markup
         $totalCostNgn = $pricePerUnit * $quantity;
-        
-        // Apply global markup first (base profit)
-        $basePriceNgn = $totalCostNgn;
-        if ($this->globalMarkupType === 'percent') {
-            $basePriceNgn = $basePriceNgn * (1 + ($this->globalMarkupFixed / 100));
+
+        // Resolve markup: per-service override first, then global settings.
+        $markup = $this->resolveMarkupForService($service);
+        $markupValue = (float) $markup['value'];
+        $markupType = (string) $markup['type'];
+
+        $finalPriceNgn = $totalCostNgn;
+
+        if ($markupType === 'percent') {
+            $finalPriceNgn = $totalCostNgn * (1 + ($markupValue / 100));
         } else {
-            // If it's fixed, we should apply it per quantity or per order?
-            // Usually, fixed markups are per 1000 or per order. 
-            // Let's assume global markup is per 1000 units to be consistent with panel pricing.
-            $fixedMarkupPerUnit = $this->globalMarkupFixed / 1000;
-            $basePriceNgn += ($fixedMarkupPerUnit * $quantity);
+            // Fixed markup per 1,000 units (scaled to requested quantity)
+            $fixedMarkupPerUnit = $markupValue / 1000;
+            $finalPriceNgn = $totalCostNgn + ($fixedMarkupPerUnit * $quantity);
         }
-        
-        // Apply individual service markup (likely percentage or per order)
-        $markupAmount = $this->applyMarkup($basePriceNgn);
-        $finalPriceNgn = $basePriceNgn + $markupAmount;
+
+        // Calculate profit
+        $profit = max(0, $finalPriceNgn - $totalCostNgn);
+
+        $finalPriceRounded = round($finalPriceNgn, 2);
+        $costPriceRounded = round($totalCostNgn, 2);
+        $profitRounded = round($profit, 2);
+        $ratePerUnit = round($finalPriceNgn / $quantity, 4);
 
         return [
-            'rate_ngn' => $rateInNgnPer1000,
-            'price_per_unit' => $pricePerUnit,
+            'total_price' => $finalPriceRounded,
+            'final_price_ngn' => $finalPriceRounded,
+            'cost_price' => $costPriceRounded,
+            'profit' => $profitRounded,
+            'rate_per_unit' => $ratePerUnit,
+            'final_price_per_unit' => $ratePerUnit,
+            'final_price_per_1000' => round($ratePerUnit * 1000, 2),
+            'markup_type' => $markupType,
+            'markup_value' => $markupValue,
+            'markup_source' => $markup['source'],
             'quantity' => $quantity,
-            'total_cost_ngn' => $totalCostNgn,
-            'final_price_ngn' => round($finalPriceNgn, 2),
-            'markup_applied' => $finalPriceNgn - $totalCostNgn,
-        ];
-    }
-            'global_markup_fixed' => $this->globalMarkupFixed,
-            'global_markup_type' => $this->globalMarkupType,
-            'base_price_ngn' => $basePriceNgn,
-            'markup_type' => $this->markupType,
-            'markup_value' => $this->markupValue,
-            'markup_amount' => $markupAmount,
-            'final_price_ngn' => round($finalPriceNgn, 2),
+            'base_rate_per_1000' => $rateInNgnPer1000,
+            'currency' => 'NGN'
         ];
     }
 
     /**
-     * Apply markup based on type and value
+     * Resolve effective markup for a service.
      */
-    private function applyMarkup(float $basePrice): float
+    public function resolveMarkupForService(SmmService $service): array
     {
-        return match ($this->markupType) {
-            'Fixed' => $this->markupValue,
-            'Percent' => ($basePrice * $this->markupValue) / 100,
-            default => 0,
-        };
+        $servicePrice = SmmServicePrice::where('smm_service_id', $service->id)
+            ->where('is_active', true)
+            ->first();
+
+        if ($servicePrice && $servicePrice->markup_value !== null) {
+            $type = strtolower((string) $servicePrice->markup_type);
+            return [
+                'type' => $type === 'percent' ? 'percent' : 'fixed',
+                'value' => (float) $servicePrice->markup_value,
+                'source' => 'service',
+            ];
+        }
+
+        $globalMarkupValue = (float) Setting::get('smm_global_markup_fixed', 500);
+        $globalMarkupType = strtolower((string) Setting::get('smm_global_markup_type', 'fixed'));
+
+        return [
+            'type' => $globalMarkupType === 'percent' ? 'percent' : 'fixed',
+            'value' => $globalMarkupValue,
+            'source' => 'global',
+        ];
     }
 
     /**
@@ -115,12 +129,16 @@ class SmmPricingService
                 // Calculate price per unit (quantity = 1)
                 $priceData = $this->calculatePrice($service, 1);
 
+                // Use effective markup in DB so admin list reflects what users are paying.
+                $markupType = $priceData['markup_type'] === 'percent' ? 'Percent' : 'Fixed';
+                $markupValue = (float) $priceData['markup_value'];
+
                 SmmServicePrice::updateOrCreate(
                     ['smm_service_id' => $service->id],
                     [
-                        'markup_type' => $this->markupType,
-                        'markup_value' => $this->markupValue,
-                        'final_price' => $priceData['final_price_ngn'],
+                        'markup_type' => $markupType,
+                        'markup_value' => $markupValue,
+                        'final_price' => $priceData['rate_per_unit'],
                         'last_synced_at' => now(),
                         'is_active' => true,
                     ]

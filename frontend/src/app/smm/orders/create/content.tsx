@@ -4,7 +4,6 @@ import { useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import api from '@/lib/api';
 import toast from 'react-hot-toast';
-import type { SmmService, SmmServicePrice } from '@/lib/types';
 
 export default function CreateSmmOrderContent() {
   const router = useRouter();
@@ -12,8 +11,9 @@ export default function CreateSmmOrderContent() {
   const serviceId = searchParams.get('serviceId');
   const quantity = searchParams.get('quantity');
 
-  const [service, setService] = useState<(SmmServicePrice & { smm_service: SmmService }) | null>(null);
+  const [service, setService] = useState<any>(null);
   const [link, setLink] = useState('');
+  const [qtyInput, setQtyInput] = useState('');
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [balance, setBalance] = useState(0);
@@ -28,11 +28,12 @@ export default function CreateSmmOrderContent() {
     }
 
     Promise.all([
-      api.get<SmmServicePrice & { smm_service: SmmService }>(`/smm/services/${serviceId}`),
+      api.get<any>(`/smm/services/${serviceId}`),
       api.get<{ balance: number }>('/wallet/balance'),
     ])
       .then(([serviceRes, balanceRes]) => {
         setService(serviceRes.data);
+        setQtyInput(quantity || String(serviceRes.data?.min || 1));
         setBalance(balanceRes.data.balance);
       })
       .catch(() => {
@@ -53,8 +54,17 @@ export default function CreateSmmOrderContent() {
       return;
     }
 
-    const qty = parseInt(quantity || '0');
-    const totalCost = service.final_price * qty;
+    const qty = Math.max(0, parseInt(qtyInput || '0') || 0);
+    const minQty = Number(service.min || 1);
+    const maxQty = Number(service.max || Number.MAX_SAFE_INTEGER);
+
+    if (qty < minQty || qty > maxQty) {
+      toast.error(`Quantity must be between ${minQty} and ${maxQty}`);
+      return;
+    }
+
+    const unitPrice = Number(service.final_price ?? service.rate_per_unit ?? 0);
+    const totalCost = unitPrice * qty;
 
     if (balance < totalCost) {
       toast.error(`Insufficient balance. You need ${formatMoney(totalCost)} but only have ${formatMoney(balance)}`);
@@ -65,7 +75,7 @@ export default function CreateSmmOrderContent() {
 
     try {
       await api.post('/smm/orders', {
-        smm_service_id: service.smm_service.id,
+        smm_service_id: service.id,
         link,
         quantity: qty,
       });
@@ -95,7 +105,11 @@ export default function CreateSmmOrderContent() {
     );
   }
 
-  const totalCost = service.final_price * (parseInt(quantity || '0') || 0);
+  const qty = Math.max(0, parseInt(qtyInput || '0') || 0);
+  const unitPrice = Number(service.final_price ?? service.rate_per_unit ?? 0);
+  const minQty = Number(service.min || 1);
+  const maxQty = Number(service.max || Number.MAX_SAFE_INTEGER);
+  const totalCost = unitPrice * qty;
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-950 dark:to-slate-900 p-4 sm:p-6 md:p-8">
@@ -111,15 +125,23 @@ export default function CreateSmmOrderContent() {
 
           {/* Service Summary */}
           <div className="bg-blue-50 dark:bg-blue-900/20 p-6 rounded-xl border border-blue-200 dark:border-blue-800">
-            <h2 className="font-semibold text-slate-900 dark:text-white mb-2">{service.smm_service?.name}</h2>
+            <h2 className="font-semibold text-slate-900 dark:text-white mb-2">{service.name}</h2>
             <div className="grid grid-cols-2 gap-4 text-sm">
               <div>
                 <p className="text-slate-600 dark:text-slate-400">Quantity</p>
-                <p className="font-bold text-slate-900 dark:text-white">{quantity}</p>
+                <input
+                  type="number"
+                  min={minQty}
+                  max={maxQty}
+                  value={qtyInput}
+                  onChange={(e) => setQtyInput(e.target.value)}
+                  className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-slate-900"
+                />
+                <p className="mt-1 text-xs text-slate-500">Min: {minQty}, Max: {maxQty}</p>
               </div>
               <div>
-                <p className="text-slate-600 dark:text-slate-400">Price per Unit</p>
-                <p className="font-bold text-slate-900 dark:text-white">{formatMoney(service.final_price)}</p>
+                <p className="text-slate-600 dark:text-slate-400">Rate (per 1k)</p>
+                <p className="font-bold text-slate-900 dark:text-white">{formatMoney(unitPrice * 1000)}</p>
               </div>
               <div>
                 <p className="text-slate-600 dark:text-slate-400">Total Cost</p>
@@ -169,7 +191,7 @@ export default function CreateSmmOrderContent() {
             </button>
             <button
               onClick={handleCreateOrder}
-              disabled={submitting || balance < totalCost}
+              disabled={submitting || balance < totalCost || qty < minQty || qty > maxQty}
               className="flex-1 px-6 py-3 rounded-lg bg-blue-600 text-white font-semibold hover:bg-blue-700 disabled:bg-slate-400 transition-colors"
             >
               {submitting ? 'Creating...' : `Confirm & Place Order`}

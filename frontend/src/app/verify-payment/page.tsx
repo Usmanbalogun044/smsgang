@@ -33,6 +33,7 @@ export default function VerifyPaymentPage() {
   const [state, setState] = useState<VerifyState>('waiting');
   const [attempt, setAttempt] = useState(0);
   const [supportMsg, setSupportMsg] = useState('');
+  const isWalletReference = reference.toUpperCase().startsWith('WALLET_');
 
   useEffect(() => {
     if (!reference) {
@@ -45,6 +46,18 @@ export default function VerifyPaymentPage() {
 
     const poll = async (count: number) => {
       try {
+        if (isWalletReference) {
+          await api.post('/wallet/verify-funding', { reference });
+
+          if (!cancelled) {
+            setState('success');
+            toast.success('Wallet funding confirmed. Redirecting...');
+            setTimeout(() => router.push('/transactions'), 900);
+          }
+
+          return;
+        }
+
         const verifyRes = await api.get(`/activations/verify/${encodeURIComponent(reference)}`);
         const activationId =
           verifyRes.data?.activation?.id ?? verifyRes.data?.order?.activation?.id;
@@ -94,7 +107,7 @@ export default function VerifyPaymentPage() {
         }
 
         // 422 ORDER_ALREADY_PROCESSED — payment done but something went sideways; support.
-        if (code === 'ORDER_ALREADY_PROCESSED') {
+        if (!isWalletReference && code === 'ORDER_ALREADY_PROCESSED') {
           setSupportMsg(
             resData?.message ??
               'Your order is being processed. If no activation appears shortly, please contact support.'
@@ -139,7 +152,9 @@ export default function VerifyPaymentPage() {
           <>
             <div className="mx-auto mb-5 flex h-14 w-14 items-center justify-center rounded-full bg-emerald-100 text-emerald-600 text-2xl font-black">✓</div>
             <h1 className="text-xl font-bold text-slate-900">Payment Verified</h1>
-            <p className="mt-2 text-sm text-slate-500">Taking you to your activation...</p>
+            <p className="mt-2 text-sm text-slate-500">
+              {isWalletReference ? 'Taking you to your transactions...' : 'Taking you to your activation...'}
+            </p>
           </>
         )}
 
@@ -147,12 +162,16 @@ export default function VerifyPaymentPage() {
           <>
             <div className="mx-auto mb-5 flex h-14 w-14 items-center justify-center rounded-full bg-rose-100 text-rose-600 text-2xl font-black">!</div>
             <h1 className="text-xl font-bold text-slate-900">Still Processing</h1>
-            <p className="mt-2 text-sm text-slate-500">We could not confirm payment yet. You can check your orders now.</p>
+            <p className="mt-2 text-sm text-slate-500">
+              {isWalletReference
+                ? 'We could not confirm funding yet. You can check your transactions now.'
+                : 'We could not confirm payment yet. You can check your orders now.'}
+            </p>
             <button
-              onClick={() => router.push('/orders')}
+              onClick={() => router.push(isWalletReference ? '/transactions' : '/orders')}
               className="mt-5 w-full rounded-lg bg-[#0f6df0] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[#0d5ed9]"
             >
-              Go to Orders
+              {isWalletReference ? 'Go to Transactions' : 'Go to Orders'}
             </button>
           </>
         )}
@@ -164,10 +183,10 @@ export default function VerifyPaymentPage() {
               <p className="mt-2 text-sm text-slate-500">{supportMsg}</p>
               <p className="mt-3 text-xs text-slate-400">Your payment was received. Please contact support and we will resolve this quickly.</p>
               <button
-                onClick={() => router.push('/orders')}
+                onClick={() => router.push(isWalletReference ? '/transactions' : '/orders')}
                 className="mt-5 w-full rounded-lg bg-[#0f6df0] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[#0d5ed9]"
               >
-                View My Orders
+                {isWalletReference ? 'View Transactions' : 'View My Orders'}
               </button>
             </>
           )}

@@ -7,6 +7,7 @@ use App\Services\WalletService;
 use App\Services\LendoverifyService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\ValidationException;
 use Throwable;
 
@@ -38,7 +39,7 @@ class WalletController extends Controller
     {
         try {
             $validated = $request->validate([
-                'amount' => ['required', 'numeric', 'min:100', 'max:5000000'],
+                'amount' => ['required', 'numeric', 'min:500'],
             ]);
 
             $amount = (float) $validated['amount'];
@@ -47,17 +48,28 @@ class WalletController extends Controller
             // Generate unique reference
             $reference = 'WALLET_' . $user->id . '_' . uniqid();
 
-            // Call Lendoverify to get checkout URL
-            $result = $this->lendoverify->generateCheckout([
-                'amount' => $amount,
-                'reference' => $reference,
-                'description' => 'Wallet Funding - SMS Gang',
-                'customer_email' => $user->email,
+            // Keep redirect flow aligned with the existing frontend payment verification page.
+            $redirectUrl = rtrim((string) config('app.verify_payment_url', config('app.frontend_url', config('app.url')) . '/verify-payment'), '/');
+
+            // Lendoverify expects this payload shape via initializeTransaction.
+            $result = $this->lendoverify->initializeTransaction([
+                'amount' => (int) round($amount * 100),
+                'customerEmail' => $user->email,
+                'customerName' => $user->name,
+                'paymentReference' => $reference,
+                'paymentDescription' => 'Wallet Funding - SMS Gang',
+                'redirectUrl' => $redirectUrl,
             ]);
+
+            $data = $result['data'] ?? $result;
+            $checkoutUrl = $data['checkout_url']
+                ?? $data['authorization_url']
+                ?? $data['authorizationUrl']
+                ?? null;
 
             return response()->json([
                 'message' => 'Wallet funding initiated. Please complete payment.',
-                'checkout_url' => $result['checkout_url'],
+                'checkout_url' => $checkoutUrl,
                 'amount' => $amount,
                 'currency' => 'NGN',
                 'reference' => $reference,
@@ -126,9 +138,16 @@ class WalletController extends Controller
                 'errors' => $e->errors(),
             ], 422);
         } catch (Throwable $e) {
+            Log::error('Wallet funding verification failed', [
+                'reference' => $request->input('reference'),
+                'user_id' => $request->user()?->id,
+                'error' => $e->getMessage(),
+            ]);
+
             return response()->json([
                 'message' => 'Failed to verify payment.',
                 'error' => 'verification_failed',
+                'details' => config('app.debug') ? $e->getMessage() : null,
             ], 422);
         }
     }
@@ -151,7 +170,7 @@ class WalletController extends Controller
                 'data' => $transactions->map(fn ($t) => [
                     'id' => $t->id,
                     'type' => $t->type,
-                    'operation' => $t->operation_type,
+                    'operation' => $t->operation_type ?? ($t->type === 'credit' ? 'wallet_fund' : 'wallet_debit'),
                     'amount' => (string) $t->amount,
                     'reference' => $t->reference,
                     'description' => $t->description,

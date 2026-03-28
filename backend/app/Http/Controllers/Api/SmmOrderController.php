@@ -49,20 +49,55 @@ class SmmOrderController extends Controller
 
             // Calculate price
             $priceData = $this->smmPricingService->calculatePrice($service, $validated['quantity']);
+            $finalPriceNgn = $priceData['total_price'];
 
             // Check wallet balance
             $wallet = $this->walletService->getOrCreateWallet($user);
-            if ($wallet->balance < $priceData['final_price_ngn']) {
+            if ($wallet->balance < $finalPriceNgn) {
                 return response()->json([
                     'message' => 'Insufficient wallet balance.',
                     'error' => 'insufficient_balance',
-                    'required' => $priceData['final_price_ngn'],
+                    'required' => $finalPriceNgn,
                     'available' => $wallet->balance,
-                    'deficit' => $priceData['final_price_ngn'] - $wallet->balance,
+                    'deficit' => $finalPriceNgn - $wallet->balance,
                 ], 422);
             }
 
-            // Create order on CrestPanel
+            // Prepare order data
+            $effectiveTotalUnits = (int) $validated['quantity'] * (int) max(1, (int) ($validated['runs'] ?? 1));
+            $markupTypeUsed = strtolower((string) ($priceData['markup_type'] ?? 'fixed'));
+            $markupValueUsed = (float) ($priceData['markup_value'] ?? 0);
+
+            // STEP 1: Create order record LOCALLY FIRST (status: pending_provider_confirmation)
+            // This ensures we have a record even if CrestPanel call fails
+            $order = SmmOrder::create([
+                'user_id' => $user->id,
+                'smm_service_id' => $service->id,
+                'crestpanel_order_id' => null,  // Will be updated after CrestPanel success
+                'link' => $validated['link'],
+                'quantity' => $validated['quantity'],
+                'runs' => $validated['runs'] ?? null,
+                'interval' => $validated['interval'] ?? null,
+                'comments' => $validated['comments'] ?? null,
+                'price_per_unit' => $priceData['rate_per_unit'],
+                'total_units' => $effectiveTotalUnits,
+                'total_cost_ngn' => $finalPriceNgn,
+                'exchange_rate_used' => 1,
+                'markup_type_used' => $markupTypeUsed,
+                'markup_value_used' => $markupValueUsed,
+                'provider_payload' => null,  // Will be updated after CrestPanel response
+                'status' => 'pending_provider_confirmation',
+            ]);
+
+            // STEP 2: Deduct from wallet (lock funds locally)
+            $this->walletService->deductFunds(
+                $user,
+                $priceData['total_price'],
+                "smm_order_{$order->id}",
+                "SMM service purchase - {$service->name}"
+            );
+
+            // STEP 3: Call CrestPanel (now we have a local record + deduction)
             $cpOrder = $this->crestPanelService->createOrder([
                 'service_id' => $service->crestpanel_service_id,
                 'link' => $validated['link'],
@@ -72,51 +107,51 @@ class SmmOrderController extends Controller
                 'comments' => $validated['comments'] ?? null,
             ]);
 
-            if (!$cpOrder || isset($cpOrder['error'])) {
+            // STEP 4: Handle CrestPanel response
+            if (!$cpOrder || isset($cpOrder['error']) || !isset($cpOrder['order'])) {
+                // Log the actual provider error for support team debugging
+                Log::channel('activity')->warning('CrestPanel createOrder returned error', [
+                    'user_id' => $user->id,
+                    'order_id' => $order->id,
+                    'error' => $cpOrder['error'] ?? 'Unknown error',
+                    'data' => $validated,
+                    'note' => 'Order created locally and funds deducted, but provider failed',
+                ]);
+
+                // Update order with failed status (but keep it in database with funds deducted)
+                $order->update([
+                    'status' => 'failed_at_provider',
+                    'provider_payload' => $cpOrder,
+                ]);
+
+                // Return user-friendly message with order proof
                 return response()->json([
-                    'message' => 'Failed to create order on CrestPanel.',
+                    'message' => 'Order recorded but provider processing failed. Please contact support with order ID to resolve this.',
                     'error' => 'provider_error',
+                    'order_id' => $order->id,
+                    'reason' => 'Please screenshot this message for support',
                 ], 422);
             }
 
-            // Create order record in database
-            $order = SmmOrder::create([
-                'user_id' => $user->id,
-                'smm_service_id' => $service->id,
-                'crestpanel_order_id' => $cpOrder['order'] ?? uniqid(),
-                'link' => $validated['link'],
-                'quantity' => $validated['quantity'],
-                'runs' => $validated['runs'] ?? null,
-                'interval' => $validated['interval'] ?? null,
-                'comments' => $validated['comments'] ?? null,
-                'price_per_unit' => $priceData['final_price_ngn'] / $validated['quantity'],
-                'total_units' => $validated['quantity'],
-                'total_cost_ngn' => $priceData['final_price_ngn'],
-                'exchange_rate_used' => $priceData['exchange_rate'],
-                'markup_type_used' => $priceData['markup_type'],
-                'markup_value_used' => $priceData['markup_value'],
+            // STEP 5: CrestPanel succeeded - update order with provider details
+            $order->update([
+                'crestpanel_order_id' => (string) $cpOrder['order'],
                 'provider_payload' => $cpOrder,
                 'status' => 'Pending',
             ]);
 
-            // Deduct from wallet
-            $this->walletService->deductFunds(
-                $user,
-                $priceData['final_price_ngn'],
-                "smm_order_{$order->id}",
-                "SMM service purchase - {$service->name}"
-            );
-
-            Log::channel('activity')->info('SMM order created', [
+            Log::channel('activity')->info('SMM order created successfully', [
                 'user_id' => $user->id,
                 'order_id' => $order->id,
+                'crestpanel_order_id' => $order->crestpanel_order_id,
                 'service' => $service->name,
                 'quantity' => $validated['quantity'],
-                'cost_ngn' => $priceData['final_price_ngn'],
+                'cost_ngn' => $priceData['total_price'],
+                'status' => 'pending_provider_confirmation → Pending (provider accepted)',
             ]);
 
             return response()->json([
-                'message' => 'Order created successfully.',
+                'message' => 'Order created and sent to provider successfully.',
                 'order' => [
                     'id' => $order->id,
                     'crestpanel_order_id' => $order->crestpanel_order_id,

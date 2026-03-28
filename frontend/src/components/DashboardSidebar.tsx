@@ -61,13 +61,25 @@ export default function DashboardSidebar({ mobileOpen = false, setMobileOpen }: 
           <span className="material-symbols-outlined" style={{ fontSize: 20 }}>dashboard</span>
           Dashboard
         </Link>
+        <Link href="/virtual-numbers" className={linkClass('/virtual-numbers')} onClick={closeMobile}>
+          <span className="material-symbols-outlined" style={{ fontSize: 20 }}>add_shopping_cart</span>
+          Virtual Number
+        </Link>
         <Link href="/activations" className={linkClass('/activations')} onClick={closeMobile}>
           <span className="material-symbols-outlined" style={{ fontSize: 20 }}>bolt</span>
-          Active Activations
+          Active Number
         </Link>
         <Link href="/orders" className={linkClass('/orders')} onClick={closeMobile}>
           <span className="material-symbols-outlined" style={{ fontSize: 20 }}>history</span>
           Order History
+        </Link>
+        <Link href="/wallet/fund" className={linkClass('/wallet/fund')} onClick={closeMobile}>
+          <span className="material-symbols-outlined" style={{ fontSize: 20 }}>account_balance_wallet</span>
+          Fund Wallet
+        </Link>
+        <Link href="/transactions" className={linkClass('/transactions')} onClick={closeMobile}>
+          <span className="material-symbols-outlined" style={{ fontSize: 20 }}>receipt_long</span>
+          Transactions
         </Link>
 
         <div className="pt-4 pb-2 px-3 text-xs font-bold text-slate-400 uppercase tracking-wider">
@@ -79,15 +91,7 @@ export default function DashboardSidebar({ mobileOpen = false, setMobileOpen }: 
         </Link>
         <Link href="/smm/orders" className={linkClass('/smm/orders')} onClick={closeMobile}>
           <span className="material-symbols-outlined" style={{ fontSize: 20 }}>assignment</span>
-          SMM Orders
-        </Link>
-
-        <div className="pt-4 pb-2 px-3 text-xs font-bold text-slate-400 uppercase tracking-wider">
-          Wallet
-        </div>
-        <Link href="/wallet" className={linkClass('/wallet')} onClick={closeMobile}>
-          <span className="material-symbols-outlined" style={{ fontSize: 20 }}>account_balance_wallet</span>
-          My Wallet
+          Boost Social Orders
         </Link>
 
         <div className="pt-4 pb-2 px-3 text-xs font-bold text-slate-400 uppercase tracking-wider">

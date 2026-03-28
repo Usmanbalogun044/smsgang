@@ -5,7 +5,6 @@ import api from '@/lib/api';
 import toast from 'react-hot-toast';
 import useRealtimeRefresh from '@/hooks/useRealtimeRefresh';
 import DashboardSidebar from '@/components/DashboardSidebar';
-import Pagination from '@/components/Pagination';
 import type { SmmOrder, PaginatedResponse } from '@/lib/types';
 
 const STATUS_COLORS: Record<string, string> = {
@@ -38,8 +37,16 @@ export default function SmmOrdersPage() {
     api
       .get<PaginatedResponse<SmmOrder>>(`/smm/orders?${params.toString()}`)
       .then(({ data }) => {
-        setOrders(data.data);
-        setMeta(data.meta);
+        const list = Array.isArray((data as any).data) ? (data as any).data : [];
+        const paginationData = (data as any).pagination || (data as any).meta || {};
+
+        setOrders(list);
+        setMeta({
+          current_page: paginationData.current_page || currentPage,
+          last_page: paginationData.last_page || 1,
+          per_page: paginationData.per_page || 20,
+          total: paginationData.total || 0,
+        });
       })
       .catch(() => {
         if (!silent) toast.error('Failed to load orders');
@@ -67,9 +74,21 @@ export default function SmmOrdersPage() {
 
       <div className="flex-1 flex flex-col overflow-hidden min-w-0">
         {/* Header */}
-        <div className="border-b border-slate-200 bg-white px-6 lg:px-8 py-4">
-          <h2 className="text-lg font-bold text-slate-900">My Boost Social Orders</h2>
-          <p className="text-sm text-slate-600 mt-1">Track all your social media growth orders in real-time</p>
+        <div className="border-b border-slate-200 bg-white px-4 lg:px-8 py-4">
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={() => setSidebarOpen(true)}
+              className="md:hidden inline-flex items-center justify-center rounded-lg border border-slate-200 p-2 text-slate-600"
+              aria-label="Open sidebar"
+            >
+              <span className="material-symbols-outlined">menu</span>
+            </button>
+            <div>
+              <h2 className="text-lg font-bold text-slate-900">My Boost Social Orders</h2>
+              <p className="text-sm text-slate-600 mt-1">Track all your social media growth orders in real-time</p>
+            </div>
+          </div>
         </div>
 
         <div className="flex-1 overflow-y-auto">
@@ -83,7 +102,7 @@ export default function SmmOrdersPage() {
                   className={`px-4 py-2 rounded-lg whitespace-nowrap transition-all ${
                     filter === f
                       ? 'bg-blue-600 text-white'
-                      : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 hover:border-blue-500'
+                      : 'bg-white text-slate-700 border border-slate-200 hover:border-blue-500'
                   }`}
                 >
                   {f === 'all' ? 'All Orders' : f}
@@ -92,7 +111,7 @@ export default function SmmOrdersPage() {
             </div>
 
             {/* Orders Table */}
-            <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 overflow-hidden">
+            <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
               {loading ? (
                 <div className="p-8 text-center text-slate-500">Loading orders...</div>
               ) : orders.length === 0 ? (
@@ -101,45 +120,45 @@ export default function SmmOrdersPage() {
                 </div>
               ) : (
                 <div className="overflow-x-auto">
-                  <table className="w-full">
-                    <thead className="bg-slate-50 dark:bg-slate-900 border-b border-slate-200 dark:border-slate-700">
+                  <table className="w-full min-w-[720px]">
+                    <thead className="bg-slate-50 border-b border-slate-200">
                       <tr>
-                        <th className="px-6 py-3 text-left text-sm font-semibold text-slate-900 dark:text-white">Service Name</th>
-                        <th className="px-6 py-3 text-left text-sm font-semibold text-slate-900 dark:text-white">Link</th>
-                        <th className="px-6 py-3 text-left text-sm font-semibold text-slate-900 dark:text-white">Qty</th>
-                        <th className="px-6 py-3 text-left text-sm font-semibold text-slate-900 dark:text-white">Total</th>
-                        <th className="px-6 py-3 text-left text-sm font-semibold text-slate-900 dark:text-white">Status</th>
-                        <th className="px-6 py-3 text-left text-sm font-semibold text-slate-900 dark:text-white">Date</th>
-                        <th className="px-6 py-3 text-left text-sm font-semibold text-slate-900 dark:text-white">Action</th>
+                        <th className="px-6 py-3 text-left text-sm font-semibold text-slate-900">Service Name</th>
+                        <th className="px-6 py-3 text-left text-sm font-semibold text-slate-900">Link</th>
+                        <th className="px-6 py-3 text-left text-sm font-semibold text-slate-900">Qty</th>
+                        <th className="px-6 py-3 text-left text-sm font-semibold text-slate-900">Total</th>
+                        <th className="px-6 py-3 text-left text-sm font-semibold text-slate-900">Status</th>
+                        <th className="px-6 py-3 text-left text-sm font-semibold text-slate-900">Date</th>
+                        <th className="px-6 py-3 text-left text-sm font-semibold text-slate-900">Action</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-slate-200 dark:divide-slate-700">
+                    <tbody className="divide-y divide-slate-200">
                       {orders.map((order) => (
-                        <tr key={order.id} className="hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors">
+                        <tr key={order.id} className="hover:bg-slate-50 transition-colors">
                           <td className="px-6 py-4">
-                            <div className="text-sm font-semibold text-slate-900 dark:text-white line-clamp-1">{order.smm_service?.name || 'N/A'}</div>
+                            <div className="text-sm font-semibold text-slate-900 line-clamp-1">{order.smm_service?.name || 'N/A'}</div>
                           </td>
                           <td className="px-6 py-4">
                             <a href={order.link} target="_blank" rel="noopener noreferrer" className="text-sm text-blue-600 hover:underline line-clamp-1">
                               {order.link}
                             </a>
                           </td>
-                          <td className="px-6 py-4 text-sm text-slate-600 dark:text-slate-400">{order.quantity}</td>
+                          <td className="px-6 py-4 text-sm text-slate-600">{order.quantity}</td>
                           <td className="px-6 py-4">
-                            <div className="text-sm font-semibold text-slate-900 dark:text-white">{formatMoney(order.total_cost_ngn)}</div>
+                            <div className="text-sm font-semibold text-slate-900">{formatMoney(order.total_cost_ngn)}</div>
                           </td>
                           <td className="px-6 py-4">
                             <span className={`inline-block px-3 py-1 rounded-full text-xs font-bold ${STATUS_COLORS[order.status] || 'bg-slate-100 text-slate-700'}`}>
                               {order.status}
                             </span>
                           </td>
-                          <td className="px-6 py-4 text-sm text-slate-600 dark:text-slate-400">
+                          <td className="px-6 py-4 text-sm text-slate-600">
                             {new Date(order.created_at).toLocaleDateString()}
                           </td>
                           <td className="px-6 py-4">
                             <button
                               onClick={() => setSelectedOrder(order)}
-                              className="text-blue-600 dark:text-blue-400 hover:underline text-sm font-semibold"
+                              className="text-blue-600 hover:underline text-sm font-semibold"
                             >
                               View
                             </button>
@@ -153,7 +172,7 @@ export default function SmmOrdersPage() {
             </div>
 
             {/* Pagination */}
-            {meta.last_page > 1 && (
+            {meta && meta.last_page > 1 && (
               <div className="mt-6 flex justify-center gap-2">
                 <button
                   onClick={() => {
@@ -162,11 +181,11 @@ export default function SmmOrdersPage() {
                     loadOrders(newPage);
                   }}
                   disabled={page === 1}
-                  className="px-4 py-2 rounded-lg border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 disabled:opacity-50 hover:bg-slate-50 dark:hover:bg-slate-800"
+                  className="px-4 py-2 rounded-lg border border-slate-200 text-slate-600 disabled:opacity-50 hover:bg-slate-50"
                 >
                   Previous
                 </button>
-                {Array.from({ length: Math.min(5, meta.last_page) }).map((_, i) => {
+                {Array.from({ length: Math.min(5, meta?.last_page || 1) }).map((_, i) => {
                   const pageNum = i + 1;
                   return (
                     <button
@@ -178,7 +197,7 @@ export default function SmmOrdersPage() {
                       className={`px-3 py-2 rounded-lg ${
                         page === pageNum
                           ? 'bg-blue-600 text-white'
-                          : 'border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800'
+                          : 'border border-slate-200 text-slate-600 hover:bg-slate-50'
                       }`}
                     >
                       {pageNum}
@@ -187,12 +206,12 @@ export default function SmmOrdersPage() {
                 })}
                 <button
                   onClick={() => {
-                    const newPage = Math.min(meta.last_page, page + 1);
+                    const newPage = Math.min(meta?.last_page || 1, page + 1);
                     setPage(newPage);
                     loadOrders(newPage);
                   }}
-                  disabled={page === meta.last_page}
-                  className="px-4 py-2 rounded-lg border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 disabled:opacity-50 hover:bg-slate-50 dark:hover:bg-slate-800"
+                  disabled={page === (meta?.last_page || 1)}
+                  className="px-4 py-2 rounded-lg border border-slate-200 text-slate-600 disabled:opacity-50 hover:bg-slate-50"
                 >
                   Next
                 </button>
@@ -205,9 +224,9 @@ export default function SmmOrdersPage() {
       {/* Order Details Modal */}
       {selectedOrder && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white dark:bg-slate-800 rounded-2xl max-w-md w-full p-6 space-y-4">
+          <div className="bg-white rounded-2xl max-w-md w-full p-4 sm:p-6 space-y-4 max-h-[90vh] overflow-y-auto">
             <div className="flex items-start justify-between">
-              <h2 className="text-2xl font-bold text-slate-900 dark:text-white">Order #{selectedOrder.id}</h2>
+              <h2 className="text-2xl font-bold text-slate-900">Order #{selectedOrder.id}</h2>
               <button
                 onClick={() => setSelectedOrder(null)}
                 className="text-slate-400 hover:text-slate-600"
@@ -218,38 +237,38 @@ export default function SmmOrdersPage() {
 
             <div className="space-y-3">
               <div>
-                <p className="text-sm text-slate-600 dark:text-slate-400">Service</p>
-                <p className="text-lg font-semibold text-slate-900 dark:text-white">{selectedOrder.smm_service?.name || 'N/A'}</p>
+                <p className="text-sm text-slate-600">Service</p>
+                <p className="text-lg font-semibold text-slate-900">{selectedOrder.smm_service?.name || 'N/A'}</p>
               </div>
               <div>
-                <p className="text-sm text-slate-600 dark:text-slate-400">Link Provided</p>
+                <p className="text-sm text-slate-600">Link Provided</p>
                 <a href={selectedOrder.link} target="_blank" rel="noopener noreferrer" className="text-sm text-blue-600 hover:underline truncate">
                   {selectedOrder.link}
                 </a>
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <p className="text-sm text-slate-600 dark:text-slate-400">Quantity</p>
-                  <p className="text-lg font-semibold text-slate-900 dark:text-white">{selectedOrder.quantity}</p>
+                  <p className="text-sm text-slate-600">Quantity</p>
+                  <p className="text-lg font-semibold text-slate-900">{selectedOrder.quantity}</p>
                 </div>
                 <div>
-                  <p className="text-sm text-slate-600 dark:text-slate-400">Total Cost</p>
-                  <p className="text-lg font-semibold text-slate-900 dark:text-white">{formatMoney(selectedOrder.total_cost_ngn)}</p>
+                  <p className="text-sm text-slate-600">Total Cost</p>
+                  <p className="text-lg font-semibold text-slate-900">{formatMoney(selectedOrder.total_cost_ngn)}</p>
                 </div>
               </div>
               <div>
-                <p className="text-sm text-slate-600 dark:text-slate-400">Status</p>
+                <p className="text-sm text-slate-600">Status</p>
                 <span className={`inline-block px-3 py-1 rounded-full text-xs font-bold mt-1 ${STATUS_COLORS[selectedOrder.status] || 'bg-slate-100 text-slate-700'}`}>
                   {selectedOrder.status}
                 </span>
               </div>
               <div>
-                <p className="text-sm text-slate-600 dark:text-slate-400">CrestPanel Order ID</p>
-                <p className="text-sm font-mono text-slate-900 dark:text-white break-all mt-1">{selectedOrder.crestpanel_order_id}</p>
+                <p className="text-sm text-slate-600">CrestPanel Order ID</p>
+                <p className="text-sm font-mono text-slate-900 break-all mt-1">{selectedOrder.crestpanel_order_id}</p>
               </div>
               <div>
-                <p className="text-sm text-slate-600 dark:text-slate-400">Ordered</p>
-                <p className="text-sm text-slate-900 dark:text-white">{new Date(selectedOrder.created_at).toLocaleString()}</p>
+                <p className="text-sm text-slate-600">Ordered</p>
+                <p className="text-sm text-slate-900">{new Date(selectedOrder.created_at).toLocaleString()}</p>
               </div>
             </div>
 

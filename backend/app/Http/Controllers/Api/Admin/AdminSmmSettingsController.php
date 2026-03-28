@@ -47,6 +47,29 @@ class AdminSmmSettingsController
             Setting::set('smm_global_markup_fixed', $validated['global_markup_fixed']);
             Setting::set('smm_global_markup_type', $validated['global_markup_type']);
 
+            // Apply global markup to all existing SMM service prices so "for everything" works immediately.
+            $globalType = strtolower((string) $validated['global_markup_type']) === 'percent' ? 'Percent' : 'Fixed';
+            $globalValue = (float) $validated['global_markup_fixed'];
+
+            SmmServicePrice::with('service:id,rate')
+                ->chunkById(200, function ($prices) use ($globalType, $globalValue) {
+                    foreach ($prices as $price) {
+                        $ratePer1000 = (float) ($price->service?->rate ?? 0);
+                        $basePerUnit = $ratePer1000 / 1000;
+
+                        $finalPerUnit = $globalType === 'Percent'
+                            ? ($basePerUnit * (1 + ($globalValue / 100)))
+                            : ($basePerUnit + ($globalValue / 1000));
+
+                        $price->update([
+                            'markup_type' => $globalType,
+                            'markup_value' => $globalValue,
+                            'final_price' => round($finalPerUnit, 2),
+                            'last_synced_at' => now(),
+                        ]);
+                    }
+                });
+
             // Clear any cached pricing calculations
             Cache::forget('smm_pricing_settings');
 
@@ -54,6 +77,7 @@ class AdminSmmSettingsController
                 'message' => 'SMM settings updated successfully.',
                 'global_markup_fixed' => $validated['global_markup_fixed'],
                 'global_markup_type' => $validated['global_markup_type'],
+                'applied_to_all_services' => true,
             ]);
         } catch (Throwable $e) {
             return response()->json([

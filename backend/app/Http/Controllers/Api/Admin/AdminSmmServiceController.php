@@ -45,6 +45,7 @@ class AdminSmmServiceController extends Controller
             return response()->json([
                 'data' => $services->map(fn ($service) => [
                     'id' => $service->id,
+                    'crestpanel_service_id' => $service->crestpanel_service_id,
                     'smm_service' => [
                         'id' => $service->id,
                         'name' => $service->name,
@@ -53,11 +54,17 @@ class AdminSmmServiceController extends Controller
                         'rate' => (string) $service->rate,
                         'min' => $service->min,
                         'max' => $service->max,
+                        'refill' => (bool) $service->refill,
+                        'cancel' => (bool) $service->cancel,
                     ],
                     'markup_type' => $service->prices->first()?->markup_type ?? 'Fixed',
                     'markup_value' => (string) ($service->prices->first()?->markup_value ?? 0),
                     'final_price' => (string) ($service->prices->first()?->final_price ?? 0),
                     'is_active' => $service->is_active,
+                    'last_synced_at' => $service->last_synced_at?->toIso8601String(),
+                    'created_at' => $service->created_at?->toIso8601String(),
+                    'updated_at' => $service->updated_at?->toIso8601String(),
+                    'provider_payload' => $service->provider_payload,
                 ]),
                 'meta' => [
                     'current_page' => $services->currentPage(),

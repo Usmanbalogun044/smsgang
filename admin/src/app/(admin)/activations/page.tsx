@@ -43,13 +43,28 @@ function expiresIn(expiresAt: string): { label: string; urgent: boolean } {
 
 type FilterTab = 'all' | 'active' | 'completed' | 'cancelled';
 
+interface DetailedActivation extends Activation {
+  order_user?: {
+    id?: number;
+    name?: string;
+    email?: string;
+  };
+  provider?: string;
+  provider_operator?: string;
+  provider_activation_id?: string | number;
+  service_id?: number;
+  country_id?: number;
+  updated_at?: string;
+}
+
 export default function ActivationsPage() {
-  const [activations, setActivations] = useState<Activation[]>([]);
+  const [activations, setActivations] = useState<DetailedActivation[]>([]);
   const [meta, setMeta] = useState({ current_page: 1, last_page: 1, per_page: 50, total: 0 });
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState<FilterTab>('all');
   const [search, setSearch] = useState('');
   const [tick, setTick] = useState(0);
+  const [expandedId, setExpandedId] = useState<number | null>(null);
 
   useEffect(() => {
     const id = setInterval(() => setTick((t) => t + 1), 1000);
@@ -218,20 +233,22 @@ export default function ActivationsPage() {
               <table className="w-full text-left border-collapse">
                 <thead className="bg-slate-50 dark:bg-slate-800/50">
                   <tr>
-                    {['User Email', 'Service', 'Country', 'Phone Number', 'SMS Code', 'Expires In', 'Status', 'Actions'].map((h) => (
+                    <th className="px-4 py-4 text-center text-xs font-bold text-slate-500 uppercase tracking-widest border-b border-slate-200 dark:border-slate-700 w-10">•</th>
+                    {['User Email', 'Service', 'Country', 'Phone Number', 'SMS Code', 'Expires In', 'Status'].map((h) => (
                       <th
                         key={h}
-                        className={`px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-widest border-b border-slate-200 dark:border-slate-700 ${h === 'Actions' ? 'text-right' : ''}`}
+                        className={`px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-widest border-b border-slate-200 dark:border-slate-700`}
                       >
                         {h}
                       </th>
                     ))}
+                    <th className="px-6 py-4 text-right text-xs font-bold text-slate-500 uppercase tracking-widest border-b border-slate-200 dark:border-slate-700">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 dark:divide-slate-700/50">
                   {filtered.length === 0 ? (
                     <tr>
-                      <td colSpan={8} className="px-6 py-16 text-center text-slate-400 text-sm">
+                      <td colSpan={9} className="px-6 py-16 text-center text-slate-400 text-sm">
                         No activations found
                       </td>
                     </tr>
@@ -240,55 +257,156 @@ export default function ActivationsPage() {
                       const isActive = ACTIVE_STATUSES.includes(a.status);
                       const { label: countdown, urgent } = expiresIn(a.expires_at);
                       return (
-                        <tr key={a.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-700/20 transition-colors">
-                          <td className="px-6 py-4">
-                            <div className="flex items-center gap-2">
-                              <div className={`size-2 rounded-full flex-shrink-0 ${isActive ? 'bg-emerald-500 animate-pulse' : 'bg-slate-300 dark:bg-slate-600'}`} />
-                              <span className="text-sm font-medium text-slate-700 dark:text-slate-200 truncate max-w-[200px]">
-                                {a.order?.user?.email ?? '—'}
+                        <tbody key={`activation-${a.id}`}>
+                          <tr className="hover:bg-slate-50/50 dark:hover:bg-slate-700/20 transition-colors cursor-pointer"
+                              onClick={() => setExpandedId(expandedId === a.id ? null : a.id)}>
+                            <td className="px-4 py-4 text-center">
+                              <span className={`transform transition-transform ${expandedId === a.id ? 'rotate-90' : ''}`}>
+                                ▶
                               </span>
-                            </div>
-                          </td>
-                          <td className="px-6 py-4 text-sm text-slate-600 dark:text-slate-400">
-                            {a.service?.name ?? '—'}
-                          </td>
-                          <td className="px-6 py-4 text-sm text-slate-600 dark:text-slate-400">
-                            {a.country?.name ?? '—'}
-                          </td>
-                          <td className="px-6 py-4">
-                            <span className="text-sm font-mono font-semibold text-slate-800 dark:text-slate-200">{a.phone_number}</span>
-                          </td>
-                          <td className="px-6 py-4">
-                            {a.sms_code ? (
-                              <span className="px-2 py-1 bg-emerald-100 dark:bg-emerald-900/30 rounded text-sm font-black tracking-widest text-emerald-600 dark:text-emerald-400">
-                                {a.sms_code}
+                            </td>
+                            <td className="px-6 py-4">
+                              <div className="flex items-center gap-2">
+                                <div className={`size-2 rounded-full flex-shrink-0 ${isActive ? 'bg-emerald-500 animate-pulse' : 'bg-slate-300 dark:bg-slate-600'}`} />
+                                <span className="text-sm font-medium text-slate-700 dark:text-slate-200 truncate max-w-[200px]">
+                                  {a.order_user?.email || a.order?.user?.email || '—'}
+                                </span>
+                              </div>
+                            </td>
+                            <td className="px-6 py-4 text-sm text-slate-600 dark:text-slate-400">
+                              {a.service?.name ?? '—'}
+                            </td>
+                            <td className="px-6 py-4 text-sm text-slate-600 dark:text-slate-400">
+                              {a.country?.name ?? '—'}
+                            </td>
+                            <td className="px-6 py-4">
+                              <span className="text-sm font-mono font-semibold text-slate-800 dark:text-slate-200">{a.phone_number}</span>
+                            </td>
+                            <td className="px-6 py-4">
+                              {a.sms_code ? (
+                                <span className="px-2 py-1 bg-emerald-100 dark:bg-emerald-900/30 rounded text-sm font-black tracking-widest text-emerald-600 dark:text-emerald-400">
+                                  {a.sms_code}
+                                </span>
+                              ) : (
+                                <span className="px-2 py-1 bg-slate-100 dark:bg-slate-800 rounded text-sm font-bold tracking-widest text-slate-400">------</span>
+                              )}
+                            </td>
+                            <td className="px-6 py-4">
+                              <span className={`text-sm font-semibold ${urgent ? 'text-rose-500' : isActive ? 'text-amber-500' : 'text-slate-400'}`}>
+                                {countdown}
                               </span>
-                            ) : (
-                              <span className="px-2 py-1 bg-slate-100 dark:bg-slate-800 rounded text-sm font-bold tracking-widest text-slate-400">------</span>
-                            )}
-                          </td>
-                          <td className="px-6 py-4">
-                            <span className={`text-sm font-semibold ${urgent ? 'text-rose-500' : isActive ? 'text-amber-500' : 'text-slate-400'}`}>
-                              {countdown}
-                            </span>
-                          </td>
-                          <td className="px-6 py-4">
-                            <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${STATUS_BADGE[a.status] ?? 'bg-slate-100 text-slate-500'}`}>
-                              {STATUS_LABEL[a.status] ?? a.status}
-                            </span>
-                          </td>
-                          <td className="px-6 py-4 text-right">
-                            {!TERMINAL_STATUSES.includes(a.status) && (
-                              <button
-                                onClick={() => handleExpire(a)}
-                                title="Force Expire"
-                                className="p-1.5 text-slate-400 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-900/20 rounded transition-all"
-                              >
-                                <span className="material-symbols-outlined !text-lg">cancel</span>
-                              </button>
-                            )}
-                          </td>
-                        </tr>
+                            </td>
+                            <td className="px-6 py-4">
+                              <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${STATUS_BADGE[a.status] ?? 'bg-slate-100 text-slate-500'}`}>
+                                {STATUS_LABEL[a.status] ?? a.status}
+                              </span>
+                            </td>
+                            <td className="px-6 py-4 text-right">
+                              {!TERMINAL_STATUSES.includes(a.status) && (
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleExpire(a);
+                                  }}
+                                  title="Force Expire"
+                                  className="p-1.5 text-slate-400 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-900/20 rounded transition-all"
+                                >
+                                  <span className="material-symbols-outlined !text-lg">cancel</span>
+                                </button>
+                              )}
+                            </td>
+                          </tr>
+                          {expandedId === a.id && (
+                            <tr className="bg-slate-100 dark:bg-slate-700/30">
+                              <td colSpan={9} className="px-6 py-6">
+                                <div className="space-y-6">
+                                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                                    {/* Order ID */}
+                                    <div>
+                                      <p className="text-xs font-bold text-slate-600 dark:text-slate-400 uppercase tracking-wider">Order ID</p>
+                                      <p className="text-sm text-slate-900 dark:text-white mt-1">#{a.order_id || '—'}</p>
+                                    </div>
+
+                                    {/* Provider */}
+                                    <div>
+                                      <p className="text-xs font-bold text-slate-600 dark:text-slate-400 uppercase tracking-wider">Provider</p>
+                                      <p className="text-sm text-slate-900 dark:text-white mt-1">{a.provider || '—'}</p>
+                                    </div>
+
+                                    {/* Provider Operator */}
+                                    <div>
+                                      <p className="text-xs font-bold text-slate-600 dark:text-slate-400 uppercase tracking-wider">Provider Operator</p>
+                                      <p className="text-sm text-slate-900 dark:text-white mt-1">{a.provider_operator || '—'}</p>
+                                    </div>
+
+                                    {/* Provider Activation ID */}
+                                    <div>
+                                      <p className="text-xs font-bold text-slate-600 dark:text-slate-400 uppercase tracking-wider">Provider Activation ID</p>
+                                      <p className="text-sm font-mono text-slate-900 dark:text-white mt-1">{a.provider_activation_id || '—'}</p>
+                                    </div>
+
+                                    {/* Created At */}
+                                    <div>
+                                      <p className="text-xs font-bold text-slate-600 dark:text-slate-400 uppercase tracking-wider">Created</p>
+                                      <p className="text-sm text-slate-900 dark:text-white mt-1">
+                                        {a.created_at ? new Date(a.created_at).toLocaleString() : '—'}
+                                      </p>
+                                    </div>
+
+                                    {/* Updated At */}
+                                    <div>
+                                      <p className="text-xs font-bold text-slate-600 dark:text-slate-400 uppercase tracking-wider">Updated</p>
+                                      <p className="text-sm text-slate-900 dark:text-white mt-1">
+                                        {a.updated_at ? new Date(a.updated_at).toLocaleString() : '—'}
+                                      </p>
+                                    </div>
+
+                                    {/* Expires At */}
+                                    <div>
+                                      <p className="text-xs font-bold text-slate-600 dark:text-slate-400 uppercase tracking-wider">Expires At</p>
+                                      <p className="text-sm text-slate-900 dark:text-white mt-1">
+                                        {a.expires_at ? new Date(a.expires_at).toLocaleString() : '—'}
+                                      </p>
+                                    </div>
+
+                                    {/* Service ID */}
+                                    <div>
+                                      <p className="text-xs font-bold text-slate-600 dark:text-slate-400 uppercase tracking-wider">Service ID</p>
+                                      <p className="text-sm text-slate-900 dark:text-white mt-1">{a.service_id || '—'}</p>
+                                    </div>
+
+                                    {/* Country ID */}
+                                    <div>
+                                      <p className="text-xs font-bold text-slate-600 dark:text-slate-400 uppercase tracking-wider">Country ID</p>
+                                      <p className="text-sm text-slate-900 dark:text-white mt-1">{a.country_id || '—'}</p>
+                                    </div>
+                                  </div>
+
+                                  {/* Order User Details */}
+                                  {(a.order_user || a.order?.user) && (
+                                    <div className="border-t border-slate-200 dark:border-slate-600 pt-6">
+                                      <p className="text-xs font-bold text-slate-600 dark:text-slate-400 uppercase tracking-wider mb-3">Order User</p>
+                                      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                                        <div>
+                                          <p className="text-xs text-slate-500">User ID</p>
+                                          <p className="text-sm text-slate-900 dark:text-white mt-1">{a.order_user?.id || a.order?.user?.id || '—'}</p>
+                                        </div>
+                                        <div>
+                                          <p className="text-xs text-slate-500">Name</p>
+                                          <p className="text-sm text-slate-900 dark:text-white mt-1">{a.order_user?.name || a.order?.user?.name || '—'}</p>
+                                        </div>
+                                        <div>
+                                          <p className="text-xs text-slate-500">Email</p>
+                                          <p className="text-sm text-slate-900 dark:text-white mt-1">{a.order_user?.email || a.order?.user?.email || '—'}</p>
+                                        </div>
+                                      </div>
+                                    </div>
+                                  )}
+                                </div>
+                              </td>
+                            </tr>
+                          )}
+                        </tbody>
                       );
                     })
                   )}

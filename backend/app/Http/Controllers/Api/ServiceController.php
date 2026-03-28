@@ -10,15 +10,39 @@ use App\Models\Service;
 use App\Models\ServicePrice;
 use App\Services\PricingService;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 
 class ServiceController extends Controller
 {
-    public function index(): AnonymousResourceCollection
+    public function index(Request $request): JsonResponse
     {
-        $services = Service::where('is_active', true)->get();
+        $search = trim((string) $request->query('search', ''));
+        $perPage = (int) $request->query('per_page', 80);
+        $perPage = max(10, min($perPage, 200));
 
-        return ServiceResource::collection($services);
+        $query = Service::query()->where('is_active', true);
+
+        if ($search !== '') {
+            $query->where(function ($q) use ($search) {
+                $q->where('name', 'like', "%{$search}%")
+                    ->orWhere('slug', 'like', "%{$search}%");
+            });
+        }
+
+        $services = $query
+            ->orderBy('name')
+            ->paginate($perPage);
+
+        return response()->json([
+            'data' => ServiceResource::collection($services->getCollection())->resolve(),
+            'meta' => [
+                'current_page' => $services->currentPage(),
+                'last_page' => $services->lastPage(),
+                'per_page' => $services->perPage(),
+                'total' => $services->total(),
+            ],
+        ]);
     }
 
     public function countries(): AnonymousResourceCollection
